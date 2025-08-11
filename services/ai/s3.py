@@ -1,8 +1,73 @@
+import os
+import requests
+from pypdf import PdfReader
+from PIL import Image
+import io
 import boto3
+import pandas as pd
 import datetime
 import hashlib
-from .settings import settings
+from settings import settings
 
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
+HF_API_URLS = {
+    "image_classification": "https://api-inference.huggingface.co/models/microsoft/resnet-50",
+    "summarization": "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
+}
+
+def handle_image(payload):
+    url = object_url(payload["key"])
+    response = requests.get(url)
+    response.raise_for_status()
+    image_bytes = response.content
+    files = {"inputs": image_bytes}
+    api_response = requests.post(
+        HF_API_URLS["image_classification"],
+        headers=HF_HEADERS,
+        data=image_bytes,
+    )
+    api_response.raise_for_status()
+    predictions = api_response.json()
+    return {"case_id": payload["case_id"], "predictions": predictions}
+
+def handle_document(payload):
+    url = object_url(payload["key"])
+    response = requests.get(url)
+    response.raise_for_status()
+    pdf_bytes = io.BytesIO(response.content)
+    reader = PdfReader(pdf_bytes)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() or ""
+    api_response = requests.post(
+        HF_API_URLS["summarization"],
+        headers=HF_HEADERS,
+        json={"inputs": text},
+    )
+    api_response.raise_for_status()
+    summary = api_response.json()
+    return {"case_id": payload["case_id"], "text": text, "summary": summary}
+
+def handle_vitals(payload):
+    url = object_url(payload["key"])
+    response = requests.get(url)
+    response.raise_for_status()
+    csv_bytes = io.BytesIO(response.content)
+    df = pd.read_csv(csv_bytes)
+    alerts = []
+    if (df["SpO2"] < 92).any():
+        alerts.append("SpO2 below 92 detected")
+    if (df["HR"] > 100).any():
+        alerts.append("High heart rate detected")
+    stats = df.describe().to_dict()
+    return {"case_id": payload["case_id"], "stats": stats, "alerts": alerts}
+
+def handle_fusion(payload):
+    # Stub for fusion logic combining results from other handlers
+    return {"case_id": payload["case_id"], "result": "fusion result"}
+
+# S3 utility functions
 _session = boto3.session.Session()
 _s3 = _session.client(
     "s3",
@@ -31,3 +96,13 @@ def key_for(case_id: str, filename: str) -> str:
     stamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S")
     h = hashlib.sha1(filename.encode()).hexdigest()[:8]
     return f"cases/{case_id}/{stamp}-{h}-{filename}"
+
+def put_object_bytes(key: str, data: bytes, content_type: str = "application/octet-stream"):
+    """Upload bytes directly to S3/MinIO"""
+    _s3.put_object(
+        Bucket=settings.S3_BUCKET,
+        Key=key,
+        Body=data,
+        ContentType=content_type
+    )
+    return f"s3://{settings.S3_BUCKET}/{key}"

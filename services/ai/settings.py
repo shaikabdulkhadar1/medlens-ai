@@ -1,4 +1,8 @@
+import os
 from pydantic_settings import BaseSettings
+
+from dotenv import load_dotenv
+load_dotenv()
 
 class Settings(BaseSettings):
     # Postgres on host port 5433 (from docker-compose)
@@ -17,6 +21,6 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:3000"
 
     # Optional Hugging Face token (for private models/endpoints later)
-    HF_TOKEN: str | None = None
+    HF_TOKEN: str | None = os.getenv("HF_TOKEN")
 
 settings = Settings()

@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Literal, Callable, Dict, Any
 import redis
-from .settings import settings
+from settings import settings
 
 r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
@@ -33,7 +33,9 @@ def _publish_status(jid: str, status: str, result: dict | None = None):
     # Workers can include case_id in result payload to let UI filter
     r.publish(PUBCHAN, json.dumps({"jid": jid, "status": status, "result": result}))
 
-def worker_loop(handler_map):
+import asyncio
+
+async def worker_loop(handler_map):
     while True:
         popped = r.brpop(QUEUE, timeout=5)
         if not popped:
@@ -43,12 +45,22 @@ def worker_loop(handler_map):
         kind = job.get("kind")
         payload = json.loads(job.get("payload", "{}"))
         try:
-            print(f"[worker] running {kind} jid={jid}")   # <— add
+            print(f"[worker] running {kind} jid={jid}")
             _publish_status(jid, "running", {"kind": kind, **payload})
             handler = handler_map[kind]
-            result = handler(payload)
-            print(f"[worker] done {kind} jid={jid}")      # <— add
+            
+            # Check if handler is async
+            if asyncio.iscoroutinefunction(handler):
+                result = await handler(payload)
+            else:
+                result = handler(payload)
+                
+            print(f"[worker] done {kind} jid={jid}")
             _publish_status(jid, "done", result)
         except Exception as e:
-            print(f"[worker] error {kind} jid={jid}: {e}")# <— add
+            print(f"[worker] error {kind} jid={jid}: {e}")
             _publish_status(jid, "error", {"error": str(e), "kind": kind})
+
+def run_worker_loop(handler_map):
+    """Synchronous wrapper for the async worker loop"""
+    asyncio.run(worker_loop(handler_map))

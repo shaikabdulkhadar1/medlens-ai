@@ -5,15 +5,16 @@ import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from redis import asyncio as aioredis  # redis-py >= 4.2 provides asyncio
 
-from .settings import settings
-from .s3 import presign_put, key_for
-from .job_queue import enqueue
-from .models import get_pool, create_case, insert_artifact
+from settings import settings
+from fastapi import UploadFile, File, Form
+from s3 import presign_put, key_for, put_object_bytes
+from job_queue import enqueue
+from models import get_pool, create_case, insert_artifact, list_cases, get_case, get_case_artifacts, get_case_model_runs
 
 
 # -------------------
@@ -63,6 +64,17 @@ class CreateCaseOut(BaseModel):
     case_id: str
 
 
+class CaseItem(BaseModel):
+    id: str
+    title: Optional[str]
+    status: str
+    created_at: str
+
+
+class CasesResponse(BaseModel):
+    cases: List[CaseItem]
+
+
 class PresignFile(BaseModel):
     filename: str
     contentType: str
@@ -96,12 +108,52 @@ class IngestRequest(BaseModel):
     artifacts: List[IngestArtifact]
 
 
+class ArtifactDetail(BaseModel):
+    id: str
+    kind: str
+    uri: str
+    meta_json: Dict[str, Any]
+    parsed_json: Optional[Dict[str, Any]] = None
+    created_at: str
+
+
+class ModelRunDetail(BaseModel):
+    id: str
+    artifact_id: Optional[str] = None
+    task: str
+    model_name: str
+    params_json: Dict[str, Any]
+    result_json: Dict[str, Any]
+    latency_ms: Optional[int] = None
+    cache_hit: bool
+    created_at: str
+
+
+class CaseDetail(BaseModel):
+    id: str
+    user_id: str
+    title: Optional[str]
+    status: str
+    created_at: str
+    artifacts: List[ArtifactDetail]
+    model_runs: List[ModelRunDetail]
+
+
 # -------------------
 # Routes
 # -------------------
 @app.get("/health")
 async def health() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/cases", response_model=CasesResponse)
+async def list_cases_route(user_id: str = "00000000-0000-0000-0000-000000000001", limit: int = 50) -> CasesResponse:
+    """
+    List recent cases for a user.
+    """
+    cases = await list_cases(app.state.db, user_id, limit)
+    return CasesResponse(cases=cases)
 
 
 @app.post("/cases", response_model=CreateCaseOut)
@@ -111,6 +163,25 @@ async def create_case_route(payload: CreateCaseIn) -> CreateCaseOut:
     """
     cid = await create_case(app.state.db, payload.user_id, payload.title)
     return CreateCaseOut(case_id=cid)
+
+
+@app.get("/cases/{case_id}", response_model=CaseDetail)
+async def get_case_route(case_id: str) -> CaseDetail:
+    """
+    Get a single case's details, uploaded artifacts, and model results.
+    """
+    case = await get_case(app.state.db, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    
+    artifacts = await get_case_artifacts(app.state.db, case_id)
+    model_runs = await get_case_model_runs(app.state.db, case_id)
+    
+    return CaseDetail(
+        **case,
+        artifacts=artifacts,
+        model_runs=model_runs
+    )
 
 
 @app.post("/upload/presign", response_model=PresignResponse)
@@ -196,3 +267,21 @@ async def ws_case(websocket: WebSocket, case_id: str) -> None:
             await pubsub.unsubscribe("ws:jobs")
         finally:
             await pubsub.close()
+
+
+@app.post("/upload/direct")
+async def upload_direct(
+    case_id: str = Form(...),
+    kind: str = Form(...),   # "image" | "document" | "vitals" | "fhir"
+    file: UploadFile = File(...),
+):
+    data = await file.read()
+    key = key_for(case_id, file.filename)
+    s3_uri = put_object_bytes(key, data, file.content_type)
+    aid = await insert_artifact(app.state.db, case_id, kind, s3_uri, {"filename": file.filename, "size": len(data)})
+    payload = {"case_id": case_id, "artifact_id": aid, "s3_uri": s3_uri}
+    if kind == "image": enqueue("vision_classify", payload)
+    elif kind == "document": enqueue("doc_parse", payload)
+    elif kind in ("vitals","fhir"): enqueue("vitals_ingest", payload)
+    enqueue("fuse", {"case_id": case_id})
+    return {"s3_uri": s3_uri, "artifact_id": aid}
