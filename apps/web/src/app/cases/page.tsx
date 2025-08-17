@@ -1,38 +1,57 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-
-interface Case {
-  id: string;
-  title: string | null;
-  status: string;
-  created_at: string;
-}
+import { api, Case } from "../lib/api";
 
 export default function CasesPage() {
   const [cases, setCases] = useState<Case[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingCases, setDeletingCases] = useState<Set<string>>(new Set());
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     fetchCases();
   }, []);
 
   const fetchCases = async () => {
     try {
       setLoading(true);
-      const response = await fetch(
-        "http://localhost:8000/cases?user_id=00000000-0000-0000-0000-000000000001"
-      );
-      if (!response.ok) {
-        throw new Error("Failed to fetch cases");
-      }
-      const data = await response.json();
+      const data = await api.listCases("e6de2df2-4bb4-43ed-b77a-50aa03526ba7");
       setCases(data.cases);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteCase = async (caseId: string) => {
+    if (
+      !confirm(
+        "Are you sure you want to delete this case? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setDeletingCases((prev) => new Set(prev).add(caseId));
+      await api.deleteCase(caseId);
+      // Remove the case from the list
+      setCases((prev) => prev.filter((c) => c.id !== caseId));
+    } catch (err) {
+      alert(
+        "Failed to delete case: " +
+          (err instanceof Error ? err.message : "Unknown error")
+      );
+    } finally {
+      setDeletingCases((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(caseId);
+        return newSet;
+      });
     }
   };
 
@@ -59,7 +78,7 @@ export default function CasesPage() {
     }
   };
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex items-center justify-center h-64">
@@ -179,8 +198,14 @@ export default function CasesPage() {
                       >
                         View
                       </Link>
-                      <button className="text-gray-400 hover:text-gray-600">
-                        Edit
+                      <button
+                        onClick={() => handleDeleteCase(caseItem.id)}
+                        disabled={deletingCases.has(caseItem.id)}
+                        className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {deletingCases.has(caseItem.id)
+                          ? "Deleting..."
+                          : "Delete"}
                       </button>
                     </td>
                   </tr>

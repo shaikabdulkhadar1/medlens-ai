@@ -2,21 +2,9 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-
-interface Case {
-  id: string;
-  title: string | null;
-  status: string;
-  created_at: string;
-}
-
-interface Artifact {
-  id: string;
-  kind: string;
-  uri: string;
-  meta_json: any;
-  created_at: string;
-}
+import { api, Case, Artifact, AnalysisResult } from "../../lib/api";
+import FileUpload from "../../components/FileUpload";
+import AIAnalysisDisplay from "../../components/AIAnalysisDisplay";
 
 export default function CaseDetailPage() {
   const params = useParams();
@@ -26,48 +14,87 @@ export default function CaseDetailPage() {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+  const [deleting, setDeleting] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     if (caseId) {
       fetchCaseData();
+      fetchAnalysisResults();
     }
   }, [caseId]);
 
   const fetchCaseData = async () => {
     try {
       setLoading(true);
-      // For now, we'll simulate the case data since we don't have a specific endpoint
-      // In a real implementation, you'd fetch from `/cases/{id}`
-      const mockCase: Case = {
-        id: caseId,
-        title: "Sample Medical Case",
-        status: "processing",
-        created_at: new Date().toISOString(),
-      };
-      setCaseData(mockCase);
-
-      // Mock artifacts data
-      const mockArtifacts: Artifact[] = [
-        {
-          id: "1",
-          kind: "image",
-          uri: "s3://medlens/cases/123/xray.jpg",
-          meta_json: { filename: "chest_xray.jpg", size: 1024000 },
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: "2",
-          kind: "document",
-          uri: "s3://medlens/cases/123/lab_report.pdf",
-          meta_json: { filename: "lab_report.pdf", size: 2048000 },
-          created_at: new Date().toISOString(),
-        },
-      ];
-      setArtifacts(mockArtifacts);
+      const data = await api.getCase(caseId);
+      setCaseData({
+        id: data.id,
+        title: data.title,
+        status: data.status,
+        created_at: data.created_at,
+      });
+      setArtifacts(data.artifacts || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUploadComplete = () => {
+    fetchCaseData(); // Refresh the case data
+    fetchAnalysisResults(); // Refresh analysis results
+    setShowUpload(false);
+  };
+
+  const fetchAnalysisResults = async () => {
+    try {
+      const results = await api.getAnalysisResults(caseId);
+      setAnalysisResults(results);
+    } catch (err) {
+      console.error("Failed to fetch analysis results:", err);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    try {
+      const report = await api.generateMedicalReport(caseId);
+      alert("Medical report generated successfully!");
+      console.log("Generated report:", report);
+    } catch (err) {
+      alert(
+        "Failed to generate report: " +
+          (err instanceof Error ? err.message : "Unknown error")
+      );
+    }
+  };
+
+  const handleDeleteCase = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to delete this case? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      await api.deleteCase(caseId);
+      alert("Case deleted successfully!");
+      // Redirect to cases list
+      window.location.href = "/cases";
+    } catch (err) {
+      alert(
+        "Failed to delete case: " +
+          (err instanceof Error ? err.message : "Unknown error")
+      );
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -124,7 +151,7 @@ export default function CaseDetailPage() {
     }
   };
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex items-center justify-center h-64">
@@ -220,14 +247,21 @@ export default function CaseDetailPage() {
           <div className="bg-white shadow-sm rounded-lg p-6 mt-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Actions</h3>
             <div className="space-y-3">
-              <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                Add More Files
+              <button
+                onClick={() => setShowUpload(!showUpload)}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                {showUpload ? "Cancel Upload" : "Add More Files"}
               </button>
               <button className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors">
                 Edit Case
               </button>
-              <button className="w-full px-4 py-2 border border-red-300 text-red-700 rounded-md hover:bg-red-50 transition-colors">
-                Delete Case
+              <button
+                onClick={handleDeleteCase}
+                disabled={deleting}
+                className="w-full px-4 py-2 border border-red-300 text-red-700 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting ? "Deleting..." : "Delete Case"}
               </button>
             </div>
           </div>
@@ -235,6 +269,19 @@ export default function CaseDetailPage() {
 
         {/* Files and Analysis */}
         <div className="lg:col-span-2">
+          {/* File Upload Section */}
+          {showUpload && (
+            <div className="bg-white shadow-sm rounded-lg p-6 mb-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Upload Files
+              </h3>
+              <FileUpload
+                caseId={caseId}
+                onUploadComplete={handleUploadComplete}
+              />
+            </div>
+          )}
+
           <div className="bg-white shadow-sm rounded-lg p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               Uploaded Files
@@ -311,38 +358,10 @@ export default function CaseDetailPage() {
 
           {/* AI Analysis Results */}
           <div className="bg-white shadow-sm rounded-lg p-6 mt-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              AI Analysis Results
-            </h3>
-
-            <div className="text-center py-8">
-              <div className="text-gray-400 mb-4">
-                <svg
-                  className="mx-auto h-12 w-12"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                  />
-                </svg>
-              </div>
-              <h4 className="text-lg font-medium text-gray-900 mb-2">
-                Analysis in Progress
-              </h4>
-              <p className="text-gray-500 mb-4">
-                AI is analyzing your uploaded files. Results will appear here
-                shortly.
-              </p>
-              <div className="flex items-center justify-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                <span className="text-sm text-gray-500">Processing...</span>
-              </div>
-            </div>
+            <AIAnalysisDisplay
+              analysisResults={analysisResults}
+              onGenerateReport={handleGenerateReport}
+            />
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { api } from "../../lib/api";
 
 interface FileUpload {
   file: File;
@@ -46,22 +47,10 @@ export default function NewCasePage() {
 
     try {
       // Create the case first
-      const caseResponse = await fetch("http://localhost:8000/cases", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: title.trim(),
-          user_id: "00000000-0000-0000-0000-000000000001",
-        }),
+      const caseData = await api.createCase({
+        title: title.trim(),
+        user_id: "e6de2df2-4bb4-43ed-b77a-50aa03526ba7",
       });
-
-      if (!caseResponse.ok) {
-        throw new Error("Failed to create case");
-      }
-
-      const caseData = await caseResponse.json();
       const caseId = caseData.case_id;
 
       // Upload files if any
@@ -76,22 +65,7 @@ export default function NewCasePage() {
             )
           );
 
-          const formData = new FormData();
-          formData.append("case_id", caseId);
-          formData.append("kind", fileUpload.kind);
-          formData.append("file", fileUpload.file);
-
-          const uploadResponse = await fetch(
-            "http://localhost:8000/upload/direct",
-            {
-              method: "POST",
-              body: formData,
-            }
-          );
-
-          if (!uploadResponse.ok) {
-            throw new Error(`Failed to upload ${fileUpload.file.name}`);
-          }
+          await api.uploadFile(caseId, fileUpload.kind, fileUpload.file);
 
           // Update status to completed
           setFiles((prev) =>
@@ -309,7 +283,6 @@ export default function NewCasePage() {
             <Link
               href="/cases"
               className="px-6 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-              disabled={loading}
             >
               Cancel
             </Link>
