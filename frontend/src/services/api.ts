@@ -1,5 +1,12 @@
 import axios from "axios";
-import { LoginRequest, LoginResponse, ApiResponse, User } from "../types";
+import {
+  LoginRequest,
+  LoginResponse,
+  ApiResponse,
+  User,
+  UploadResponse,
+  ConfirmUploadResponse,
+} from "../types";
 
 const API_BASE_URL =
   process.env.REACT_APP_API_URL || "http://localhost:5001/api";
@@ -99,6 +106,90 @@ export const authAPI = {
 
   getPatients: async (): Promise<ApiResponse> => {
     const response = await api.get<ApiResponse>("/auth/patients");
+    return response.data;
+  },
+};
+
+// Upload API
+export const uploadAPI = {
+  generateUploadUrls: async (
+    files: File[],
+    patientId: string
+  ): Promise<UploadResponse> => {
+    const filesInfo = files.map((file) => ({
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+    }));
+
+    const response = await api.post<UploadResponse>(
+      "/upload/generate-upload-urls",
+      {
+        patientId,
+        files: filesInfo,
+      }
+    );
+    return response.data;
+  },
+
+  uploadToPresignedUrl: async (
+    presignedUrl: string,
+    file: File,
+    metadata?: { [key: string]: string }
+  ): Promise<void> => {
+    const headers: { [key: string]: string } = {
+      "Content-Type": file.type,
+    };
+
+    // Add metadata headers if provided
+    if (metadata) {
+      Object.entries(metadata).forEach(([key, value]) => {
+        headers[`x-amz-meta-${key}`] = value;
+      });
+    }
+
+    const response = await fetch(presignedUrl, {
+      method: "PUT",
+      body: file,
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Upload failed: ${response.status} ${response.statusText} - ${errorText}`
+      );
+    }
+  },
+
+  confirmUpload: async (
+    uploadId: string,
+    key: string
+  ): Promise<ConfirmUploadResponse> => {
+    const response = await api.post<ConfirmUploadResponse>(
+      "/upload/confirm-upload",
+      {
+        uploadId,
+        key,
+      }
+    );
+    return response.data;
+  },
+
+  getPatientFiles: async (patientId: string): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(
+      `/upload/patient/${patientId}/files`
+    );
+    return response.data;
+  },
+
+  getDownloadUrl: async (key: string): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(`/upload/download/${key}`);
+    return response.data;
+  },
+
+  deleteFile: async (key: string): Promise<ApiResponse> => {
+    const response = await api.delete<ApiResponse>(`/upload/delete/${key}`);
     return response.data;
   },
 };

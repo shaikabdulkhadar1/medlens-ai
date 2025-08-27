@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { authAPI } from "../services/api";
 import { User, Patient } from "../types";
@@ -30,6 +31,7 @@ import {
 } from "lucide-react";
 
 const ConsultingDoctorDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -422,7 +424,10 @@ const ConsultingDoctorDashboard: React.FC = () => {
 
                         {/* Action Buttons */}
                         <div className="lg:col-span-2 flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
-                          <button className="btn-secondary flex items-center space-x-2">
+                          <button
+                            onClick={() => navigate(`/patient/${patient._id}`)}
+                            className="btn-secondary flex items-center space-x-2"
+                          >
                             <Eye className="w-4 h-4" />
                             <span>View Full Profile</span>
                           </button>

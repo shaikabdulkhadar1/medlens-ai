@@ -11,6 +11,7 @@ const AuditLog = require("./schemas/AuditLog");
 const Notification = require("./schemas/Notification");
 const AIModel = require("./schemas/AIModel");
 const SystemSetting = require("./schemas/SystemSetting");
+const UploadRecord = require("./schemas/UploadRecord");
 
 // Export all models
 module.exports = {
@@ -25,4 +26,5 @@ module.exports = {
   Notification,
   AIModel,
   SystemSetting,
+  UploadRecord,
 };

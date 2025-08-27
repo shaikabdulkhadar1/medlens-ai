@@ -62,6 +62,44 @@ export interface ApiResponse<T = any> {
   hierarchy?: UserHierarchy;
 }
 
+export interface UploadedFile {
+  success: boolean;
+  url: string;
+  key: string;
+  originalName: string;
+  size: number;
+  contentType: string;
+}
+
+export interface UploadUrl {
+  fileName: string;
+  presignedUrl: string;
+  uploadId: string;
+  key: string;
+  expiresIn: number;
+}
+
+export interface UploadResponse {
+  success: boolean;
+  message: string;
+  uploadUrls: UploadUrl[];
+  errors?: Array<{
+    fileName: string;
+    error: string;
+  }>;
+}
+
+export interface ConfirmUploadResponse {
+  success: boolean;
+  message: string;
+  uploadRecord: {
+    id: string;
+    key: string;
+    originalName: string;
+    status: string;
+  };
+}
+
 export interface AuthContextType {
   user: User | null;
   token: string | null;

@@ -119,6 +119,7 @@ app.post("/api/test-user", async (req, res) => {
 
 // API routes
 app.use("/api/auth", require("./routes/auth"));
+app.use("/api/upload", require("./routes/upload"));
 
 // Get all users endpoint (legacy - will be replaced by auth routes)
 app.get("/api/users", async (req, res) => {

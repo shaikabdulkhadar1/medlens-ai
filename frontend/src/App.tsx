@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ConsultingDoctorDashboard from "./pages/ConsultingDoctorDashboard";
+import PatientDetails from "./pages/PatientDetails";
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({
@@ -85,6 +86,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <RoleBasedDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/patient/:patientId"
+        element={
+          <ProtectedRoute>
+            <PatientDetails />
           </ProtectedRoute>
         }
       />
