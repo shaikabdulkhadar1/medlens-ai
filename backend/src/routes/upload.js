@@ -378,9 +378,27 @@ router.get(
   async (req, res) => {
     try {
       const { key } = req.params;
+      const userId = req.user._id;
+
+      // Verify file exists in database
+      const uploadRecord = await UploadRecord.findOne({ fileKey: key });
+      if (!uploadRecord) {
+        return res.status(404).json({
+          success: false,
+          message: "File not found",
+        });
+      }
+
+      // Verify access (uploader or admin)
+      if (uploadRecord.uploadedBy.toString() !== userId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Not authorized to download this file",
+        });
+      }
 
       const params = {
-        Bucket: "medlens-documents", // Replace with your R2 bucket name
+        Bucket: "medlens-documents",
         Key: key,
         Expires: 3600, // URL expires in 1 hour
       };
@@ -410,13 +428,35 @@ router.delete(
   async (req, res) => {
     try {
       const { key } = req.params;
+      const userId = req.user._id;
 
+      // Find the upload record in database
+      const uploadRecord = await UploadRecord.findOne({ fileKey: key });
+      if (!uploadRecord) {
+        return res.status(404).json({
+          success: false,
+          message: "File record not found",
+        });
+      }
+
+      // Verify ownership or admin access
+      if (uploadRecord.uploadedBy.toString() !== userId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Not authorized to delete this file",
+        });
+      }
+
+      // Delete from R2
       const params = {
-        Bucket: "medlens-documents", // Replace with your R2 bucket name
+        Bucket: "medlens-documents",
         Key: key,
       };
 
       await s3.deleteObject(params).promise();
+
+      // Delete from database
+      await UploadRecord.findByIdAndDelete(uploadRecord._id);
 
       res.json({
         success: true,
@@ -441,31 +481,51 @@ router.get(
   async (req, res) => {
     try {
       const { patientId } = req.params;
+      const userId = req.user._id;
 
-      const params = {
-        Bucket: "medlens-documents", // Replace with your R2 bucket name
-        Prefix: `patients/${patientId}/documents/`,
-      };
+      // Validate patient exists
+      const patient = await Patient.findById(patientId);
+      if (!patient) {
+        return res.status(404).json({
+          success: false,
+          message: "Patient not found",
+        });
+      }
 
-      const result = await s3.listObjectsV2(params).promise();
+      // Fetch upload records from database for this patient
+      const uploadRecords = await UploadRecord.find({
+        patientId: patientId,
+        status: "completed", // Only show completed uploads
+      })
+        .populate("uploadedBy", "firstName lastName email")
+        .sort({ createdAt: -1 }); // Most recent first
 
-      const files = result.Contents.map((obj) => ({
-        key: obj.Key,
-        size: obj.Size,
-        lastModified: obj.LastModified,
-        // Extract original filename from metadata if available
-        originalName: obj.Key.split("/").pop(),
+      // Transform the data for frontend consumption
+      const files = uploadRecords.map((record) => ({
+        _id: record._id,
+        fileKey: record.fileKey,
+        key: record.fileKey, // For backward compatibility
+        originalName: record.originalName,
+        fileName: record.originalName, // For backward compatibility
+        fileSize: record.fileSize,
+        contentType: record.contentType,
+        status: record.status,
+        createdAt: record.createdAt,
+        completedAt: record.completedAt,
+        uploadedBy: record.uploadedBy,
+        metadata: record.metadata,
       }));
 
       res.json({
         success: true,
-        files: files,
+        data: files,
+        message: `Found ${files.length} documents for patient`,
       });
     } catch (error) {
-      console.error("Error listing files:", error);
+      console.error("Error listing patient files:", error);
       res.status(500).json({
         success: false,
-        message: "Error listing files",
+        message: "Error listing patient files",
         error: error.message,
       });
     }

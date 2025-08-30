@@ -6,6 +6,7 @@ const {
   requireAdmin,
   requireSeniorDoctorOrAdmin,
   canAccessUser,
+  canAccessPatient,
   generateToken,
   getUserHierarchy,
 } = require("../middleware/auth");
@@ -525,6 +526,52 @@ router.get("/patients", authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+});
+
+// @route   PUT /api/auth/patients/:patientId
+// @desc    Update patient
+// @access  Private
+router.put("/patients/:patientId", authenticateToken, async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const updateData = req.body;
+
+    // Find the patient
+    const patient = await Patient.findById(patientId);
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: "Patient not found",
+      });
+    }
+
+    // Check if user has permission to update this patient
+    if (!canAccessPatient(req.user, patient)) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to update this patient",
+      });
+    }
+
+    // Update the patient
+    const updatedPatient = await Patient.findByIdAndUpdate(
+      patientId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).populate("assignedDoctor", "firstName lastName email");
+
+    res.json({
+      success: true,
+      message: "Patient updated successfully",
+      patient: updatedPatient,
+    });
+  } catch (error) {
+    console.error("Update patient error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update patient",
     });
   }
 });

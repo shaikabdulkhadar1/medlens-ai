@@ -7,27 +7,12 @@ import {
   Users,
   UserCheck,
   Activity,
-  Settings,
   LogOut,
   Search,
-  Filter,
-  MoreVertical,
   Eye,
-  Edit,
-  Trash2,
   Stethoscope,
   User as UserIcon,
-  Calendar,
-  Phone,
-  Mail,
-  MapPin,
-  Heart,
-  Pill,
-  AlertTriangle,
-  FileText,
   Plus,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 
 const ConsultingDoctorDashboard: React.FC = () => {
@@ -37,7 +22,6 @@ const ConsultingDoctorDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
 
   useEffect(() => {
     loadPatients();
@@ -108,10 +92,6 @@ const ConsultingDoctorDashboard: React.FC = () => {
         changeType: "positive",
       },
     ];
-  };
-
-  const togglePatientExpansion = (patientId: string) => {
-    setExpandedPatient(expandedPatient === patientId ? null : patientId);
   };
 
   const formatDate = (dateString: string) => {
@@ -338,110 +318,14 @@ const ConsultingDoctorDashboard: React.FC = () => {
 
                       <div className="flex items-center space-x-2">
                         <button
-                          onClick={() => togglePatientExpansion(patient._id)}
-                          className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
+                          onClick={() => navigate(`/patient/${patient._id}`)}
+                          className="btn-secondary flex items-center space-x-2 px-3 py-2 text-sm"
                         >
-                          {expandedPatient === patient._id ? (
-                            <ChevronUp className="w-5 h-5" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5" />
-                          )}
-                        </button>
-                        <button className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100">
-                          <MoreVertical className="w-5 h-5" />
+                          <Eye className="w-4 h-4" />
+                          <span>View Full Profile</span>
                         </button>
                       </div>
                     </div>
-
-                    {/* Expanded Patient Details */}
-                    {expandedPatient === patient._id && (
-                      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Contact Information */}
-                        <div className="space-y-4">
-                          <h5 className="font-medium text-gray-900 flex items-center space-x-2">
-                            <UserIcon className="w-4 h-4" />
-                            <span>Contact Information</span>
-                          </h5>
-                          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                            <div className="flex items-center space-x-3">
-                              <Phone className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-600">
-                                {patient.contactInfo?.phone || "Not provided"}
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <Mail className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-600">
-                                {patient.contactInfo?.email || "Not provided"}
-                              </span>
-                            </div>
-                            <div className="flex items-start space-x-3">
-                              <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                              <span className="text-sm text-gray-600">
-                                {patient.contactInfo?.address
-                                  ? `${patient.contactInfo.address.street}, ${patient.contactInfo.address.city}, ${patient.contactInfo.address.state} ${patient.contactInfo.address.zipCode}`
-                                  : "Address not provided"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Medical Summary */}
-                        <div className="space-y-4">
-                          <h5 className="font-medium text-gray-900 flex items-center space-x-2">
-                            <Heart className="w-4 h-4" />
-                            <span>Medical Summary</span>
-                          </h5>
-                          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                            <div className="flex items-center space-x-3">
-                              <AlertTriangle className="w-4 h-4 text-red-400" />
-                              <span className="text-sm text-gray-600">
-                                <strong>Allergies:</strong>{" "}
-                                {patient.medicalHistory?.allergies?.length || 0}{" "}
-                                recorded
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <Pill className="w-4 h-4 text-blue-400" />
-                              <span className="text-sm text-gray-600">
-                                <strong>Medications:</strong>{" "}
-                                {patient.medicalHistory?.medications?.length ||
-                                  0}{" "}
-                                active
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <FileText className="w-4 h-4 text-green-400" />
-                              <span className="text-sm text-gray-600">
-                                <strong>Conditions:</strong>{" "}
-                                {patient.medicalHistory?.conditions?.length ||
-                                  0}{" "}
-                                diagnosed
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="lg:col-span-2 flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
-                          <button
-                            onClick={() => navigate(`/patient/${patient._id}`)}
-                            className="btn-secondary flex items-center space-x-2"
-                          >
-                            <Eye className="w-4 h-4" />
-                            <span>View Full Profile</span>
-                          </button>
-                          <button className="btn-primary flex items-center space-x-2">
-                            <Edit className="w-4 h-4" />
-                            <span>Edit Patient</span>
-                          </button>
-                          <button className="btn-primary flex items-center space-x-2">
-                            <Plus className="w-4 h-4" />
-                            <span>New Case</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>

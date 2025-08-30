@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { User } = require("../db");
+const { User, Patient } = require("../db");
 
 // Middleware to verify JWT token
 const authenticateToken = async (req, res, next) => {
@@ -138,8 +138,39 @@ const canAccessUser = async (req, res, next) => {
   }
 };
 
-// Middleware to check if user can access patient data
-const canAccessPatient = async (req, res, next) => {
+// Helper function to check if user can access patient data
+const canAccessPatient = (user, patient) => {
+  try {
+    // Admin can access any patient
+    if (user.role === "admin") {
+      return true;
+    }
+
+    // Senior doctor can access patients of their assigned consulting doctors
+    if (user.role === "senior_doctor") {
+      // For now, senior doctors can access all patients
+      // TODO: Implement proper hierarchy check when patient-doctor relationships are added
+      return true;
+    }
+
+    // Consulting doctor can only access their own patients
+    if (user.role === "consulting_doctor") {
+      // Check if the patient is assigned to this consulting doctor
+      return (
+        patient.assignedDoctor &&
+        patient.assignedDoctor.toString() === user._id.toString()
+      );
+    }
+
+    return false;
+  } catch (error) {
+    console.error("Error in canAccessPatient:", error);
+    return false;
+  }
+};
+
+// Middleware to check if user can access patient data (for route middleware)
+const canAccessPatientMiddleware = async (req, res, next) => {
   try {
     const patientId = req.params.patientId || req.body.patientId;
 
@@ -150,29 +181,24 @@ const canAccessPatient = async (req, res, next) => {
       });
     }
 
-    // Admin can access any patient
-    if (req.user.role === "admin") {
-      return next();
+    // Find the patient
+    const patient = await Patient.findById(patientId);
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: "Patient not found",
+      });
     }
 
-    // Senior doctor can access patients of their assigned consulting doctors
-    if (req.user.role === "senior_doctor") {
-      // This will be implemented when we add patient-doctor relationships
-      // For now, senior doctors can access all patients
-      return next();
+    // Check access using the helper function
+    if (!canAccessPatient(req.user, patient)) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied to this patient",
+      });
     }
 
-    // Consulting doctor can only access their own patients
-    if (req.user.role === "consulting_doctor") {
-      // This will be implemented when we add patient-doctor relationships
-      // For now, consulting doctors can access all patients
-      return next();
-    }
-
-    return res.status(403).json({
-      success: false,
-      message: "Access denied to this patient",
-    });
+    return next();
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -219,6 +245,7 @@ module.exports = {
   requireAnyDoctor,
   canAccessUser,
   canAccessPatient,
+  canAccessPatientMiddleware,
   generateToken,
   getUserHierarchy,
 };

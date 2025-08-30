@@ -108,6 +108,17 @@ export const authAPI = {
     const response = await api.get<ApiResponse>("/auth/patients");
     return response.data;
   },
+
+  updatePatient: async (
+    patientId: string,
+    patientData: any
+  ): Promise<ApiResponse> => {
+    const response = await api.put<ApiResponse>(
+      `/auth/patients/${patientId}`,
+      patientData
+    );
+    return response.data;
+  },
 };
 
 // Upload API
@@ -190,6 +201,43 @@ export const uploadAPI = {
 
   deleteFile: async (key: string): Promise<ApiResponse> => {
     const response = await api.delete<ApiResponse>(`/upload/delete/${key}`);
+    return response.data;
+  },
+};
+
+// Timeline API
+export const timelineAPI = {
+  getPatientTimeline: async (patientId: string): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(
+      `/timeline/patient/${patientId}`
+    );
+    return response.data;
+  },
+
+  addTimelineEntry: async (
+    patientId: string,
+    timelineData: any
+  ): Promise<ApiResponse> => {
+    const response = await api.post<ApiResponse>(
+      `/timeline/patient/${patientId}`,
+      timelineData
+    );
+    return response.data;
+  },
+
+  updateTimelineEntry: async (
+    entryId: string,
+    timelineData: any
+  ): Promise<ApiResponse> => {
+    const response = await api.put<ApiResponse>(
+      `/timeline/${entryId}`,
+      timelineData
+    );
+    return response.data;
+  },
+
+  deleteTimelineEntry: async (entryId: string): Promise<ApiResponse> => {
+    const response = await api.delete<ApiResponse>(`/timeline/${entryId}`);
     return response.data;
   },
 };

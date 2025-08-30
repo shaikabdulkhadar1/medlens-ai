@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { authAPI, uploadAPI } from "../services/api";
+import { authAPI, uploadAPI, timelineAPI } from "../services/api";
 import { Patient, UploadResponse, UploadUrl } from "../types";
 import {
   ArrowLeft,
@@ -29,6 +29,8 @@ import {
   CheckCircle,
   AlertCircle,
   Loader,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 
 const PatientDetails: React.FC = () => {
@@ -51,10 +53,15 @@ const PatientDetails: React.FC = () => {
   const [cloudUploadProgress, setCloudUploadProgress] = useState<{
     [key: string]: number;
   }>({});
+  const [patientFiles, setPatientFiles] = useState<any[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [expandedTimeline, setExpandedTimeline] = useState<string | null>(null);
+  const [isClosingCase, setIsClosingCase] = useState(false);
 
   useEffect(() => {
     if (patientId && patientId !== undefined) {
       loadPatientDetails();
+      loadPatientFiles();
     }
   }, [patientId]);
 
@@ -75,6 +82,22 @@ const PatientDetails: React.FC = () => {
       console.error("Error loading patient details:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadPatientFiles = async () => {
+    if (!patientId) return;
+
+    try {
+      setIsLoadingFiles(true);
+      const response = await uploadAPI.getPatientFiles(patientId);
+      if (response.success) {
+        setPatientFiles(response.data || []);
+      }
+    } catch (error) {
+      console.error("Error loading patient files:", error);
+    } finally {
+      setIsLoadingFiles(false);
     }
   };
 
@@ -100,6 +123,115 @@ const PatientDetails: React.FC = () => {
       month: "long",
       day: "numeric",
     });
+  };
+
+  const handleFileDownload = async (fileKey: string, fileName: string) => {
+    try {
+      const response = await uploadAPI.getDownloadUrl(fileKey);
+      if (response.success && response.data.downloadUrl) {
+        const link = document.createElement("a");
+        link.href = response.data.downloadUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      console.error("Error downloading file:", error);
+    }
+  };
+
+  const handleFileDelete = async (fileKey: string) => {
+    try {
+      const response = await uploadAPI.deleteFile(fileKey);
+      if (response.success) {
+        // Reload patient files after deletion
+        loadPatientFiles();
+      }
+    } catch (error) {
+      console.error("Error deleting file:", error);
+    }
+  };
+
+  const getFileIcon = (fileName: string) => {
+    const extension = fileName.split(".").pop()?.toLowerCase();
+    switch (extension) {
+      case "pdf":
+        return <FileText className="w-5 h-5 text-red-500" />;
+      case "jpg":
+      case "jpeg":
+      case "png":
+        return <FileText className="w-5 h-5 text-blue-500" />;
+      case "doc":
+      case "docx":
+        return <FileText className="w-5 h-5 text-blue-600" />;
+      case "txt":
+        return <FileText className="w-5 h-5 text-gray-500" />;
+      default:
+        return <FileText className="w-5 h-5 text-gray-400" />;
+    }
+  };
+
+  const handleCloseCase = async () => {
+    if (!patient || !user) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to close the case for ${patient.firstName} ${patient.lastName}? This will mark the patient as inactive.`
+    );
+
+    if (!confirmed) return;
+
+    setIsClosingCase(true);
+
+    try {
+      // Update patient status to inactive
+      const response = await authAPI.updatePatient(patient._id, {
+        isActive: false,
+      });
+
+      if (response.success) {
+        // Add timeline entry for case closure
+        await timelineAPI.addTimelineEntry(patient._id, {
+          title: "Case Closed",
+          description: "Patient case has been closed and marked as inactive.",
+          type: "case_closed",
+          date: new Date(),
+          time: new Date().toLocaleTimeString(),
+          consultedBy: user._id,
+          consultationSummary: `Case closed by ${user.firstName} ${user.lastName}. Patient is no longer active in the system.`,
+          documentsCount: 0,
+          metadata: {
+            closedBy: user._id,
+            closureReason: "Case completion",
+          },
+        });
+
+        // Update local patient state
+        setPatient({
+          ...patient,
+          isActive: false,
+        });
+
+        // Show success message
+        alert(
+          `Case closed successfully for ${patient.firstName} ${patient.lastName}`
+        );
+
+        // Navigate back to dashboard
+        navigate("/dashboard");
+      } else {
+        throw new Error(response.message || "Failed to close case");
+      }
+    } catch (error) {
+      console.error("Error closing case:", error);
+      alert(
+        `Error closing case: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsClosingCase(false);
+    }
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -177,23 +309,6 @@ const PatientDetails: React.FC = () => {
       setIsUploading(false);
       setIsAnalyzing(false);
       setUploadProgress({});
-    }
-  };
-
-  const getFileIcon = (fileName: string) => {
-    const extension = fileName.split(".").pop()?.toLowerCase();
-    switch (extension) {
-      case "pdf":
-        return <FileText className="w-5 h-5 text-red-500" />;
-      case "jpg":
-      case "jpeg":
-      case "png":
-        return <FileText className="w-5 h-5 text-blue-500" />;
-      case "doc":
-      case "docx":
-        return <FileText className="w-5 h-5 text-blue-600" />;
-      default:
-        return <FileText className="w-5 h-5 text-gray-500" />;
     }
   };
 
@@ -344,7 +459,7 @@ const PatientDetails: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-4">
               <button
@@ -385,8 +500,8 @@ const PatientDetails: React.FC = () => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex h-[calc(100vh-80px)]">
+      <div className="pt-6 px-6">
+        <div className="flex h-[calc(100vh-120px)]">
           {/* Left Section - Patient Details (35%) */}
           <div className="w-[35%] bg-white border-r border-gray-200 overflow-y-auto">
             <div className="p-6">
@@ -396,10 +511,10 @@ const PatientDetails: React.FC = () => {
                   <User className="w-8 h-8 text-primary-600" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
+                  <h2 className="text-3xl font-bold text-gray-900">
                     {patient.firstName} {patient.lastName}
                   </h2>
-                  <p className="text-gray-600">
+                  <p className="text-gray-600 text-lg">
                     Patient ID: {patient.patientId}
                   </p>
                   <div className="flex items-center space-x-4 mt-1">
@@ -423,8 +538,8 @@ const PatientDetails: React.FC = () => {
               </div>
 
               {/* Contact Information */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+              <div className="mb-8">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">
                   Contact Information
                 </h3>
                 <div className="space-y-3">
@@ -452,8 +567,8 @@ const PatientDetails: React.FC = () => {
               </div>
 
               {/* Medical History */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+              <div className="mb-8">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">
                   Medical History
                 </h3>
                 <div className="space-y-4">
@@ -552,8 +667,8 @@ const PatientDetails: React.FC = () => {
 
               {/* Insurance Information */}
               {patient.insurance && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                <div className="mb-8">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">
                     Insurance
                   </h3>
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -587,8 +702,8 @@ const PatientDetails: React.FC = () => {
 
               {/* Emergency Contact */}
               {patient.emergencyContact && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                <div className="mb-8">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">
                     Emergency Contact
                   </h3>
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -624,7 +739,7 @@ const PatientDetails: React.FC = () => {
           </div>
 
           {/* Right Section - Content Area (65%) */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col bg-gray-50">
             {/* Tab Navigation */}
             <div className="bg-white border-b border-gray-200">
               <div className="flex space-x-8 px-6">
@@ -675,73 +790,479 @@ const PatientDetails: React.FC = () => {
               {activeTab === "timeline" && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-semibold text-gray-900">
-                      Patient Timeline
+                    <h3 className="text-2xl font-semibold text-gray-900">
+                      Medical Timeline
                     </h3>
-                    <button className="btn-primary flex items-center space-x-2">
-                      <Plus className="w-4 h-4" />
-                      <span>Add Entry</span>
-                    </button>
+                    <div className="flex items-center space-x-3">
+                      <button className="btn-primary flex items-center space-x-2">
+                        <Plus className="w-4 h-4" />
+                        <span>Add Visit</span>
+                      </button>
+                      <button
+                        onClick={handleCloseCase}
+                        disabled={isClosingCase || !patient.isActive}
+                        className="btn-secondary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <X className="w-4 h-4" />
+                        <span>
+                          {isClosingCase ? "Closing..." : "Case Closed"}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Timeline Items */}
-                  <div className="space-y-4">
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                      <div className="flex items-start space-x-4">
-                        <div className="w-3 h-3 bg-primary-500 rounded-full mt-2"></div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-gray-900">
-                              Patient Registration
-                            </h4>
-                            <span className="text-sm text-gray-500">
-                              {formatDate(patient.createdAt)}
-                            </span>
+                  {/* Timeline Items - Most Recent First */}
+                  <div className="relative">
+                    {/* Vertical Timeline Line */}
+                    <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-300"></div>
+
+                    <div className="space-y-6">
+                      {/* Case Closed Entry - Show only if patient is inactive */}
+                      {!patient.isActive && (
+                        <div className="relative">
+                          <div className="flex items-start">
+                            {/* Timeline Node */}
+                            <div className="relative z-10 flex-shrink-0">
+                              <div className="w-12 h-12 bg-red-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                                <X className="w-5 h-5 text-white" />
+                              </div>
+                            </div>
+
+                            {/* Content Card */}
+                            <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
+                              {/* Collapsed View */}
+                              <div className="p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <h4 className="text-xl font-semibold text-gray-900">
+                                      Case Closed
+                                    </h4>
+                                    <p className="text-sm text-gray-600 mt-1">
+                                      Patient case has been closed and marked as
+                                      inactive.
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center space-x-3 ml-4">
+                                    <div className="text-right">
+                                      <div className="text-sm font-medium text-gray-900">
+                                        {formatDate(new Date().toISOString())}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        Case Closed
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() =>
+                                        setExpandedTimeline(
+                                          expandedTimeline === "case-closed"
+                                            ? null
+                                            : "case-closed"
+                                        )
+                                      }
+                                      className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                    >
+                                      {expandedTimeline === "case-closed" ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                      ) : (
+                                        <ChevronDown className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Expanded Details */}
+                              {expandedTimeline === "case-closed" && (
+                                <div className="border-t border-gray-100 p-4 bg-gray-50">
+                                  <div className="space-y-4">
+                                    <div className="flex items-center space-x-2">
+                                      <UserIcon className="w-4 h-4 text-gray-500" />
+                                      <span className="text-sm font-medium text-gray-700">
+                                        Closed by: {user?.firstName}{" "}
+                                        {user?.lastName}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm text-gray-600">
+                                      Patient case has been officially closed.
+                                      The patient is no longer active in the
+                                      system. All medical records and documents
+                                      remain accessible for reference purposes.
+                                    </p>
+                                    <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                      <span className="flex items-center space-x-1">
+                                        <Clock className="w-3 h-3" />
+                                        <span>Case Status: Inactive</span>
+                                      </span>
+                                      <span className="flex items-center space-x-1">
+                                        <UserIcon className="w-3 h-3" />
+                                        <span>
+                                          Patient: {patient.firstName}{" "}
+                                          {patient.lastName}
+                                        </span>
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Patient {patient.firstName} {patient.lastName} was
-                            registered in the system.
-                          </p>
+                        </div>
+                      )}
+
+                      {/* Follow-up Consultation */}
+                      <div className="relative">
+                        <div className="flex items-start">
+                          {/* Timeline Node */}
+                          <div className="relative z-10 flex-shrink-0">
+                            <div className="w-12 h-12 bg-green-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                              <UserIcon className="w-5 h-5 text-white" />
+                            </div>
+                          </div>
+
+                          {/* Content Card */}
+                          <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
+                            {/* Collapsed View */}
+                            <div className="p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h4 className="text-xl font-semibold text-gray-900">
+                                    Follow-up Consultation
+                                  </h4>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    Patient returned for follow-up regarding
+                                    diabetes management and blood pressure
+                                    control.
+                                  </p>
+                                </div>
+                                <div className="flex items-center space-x-3 ml-4">
+                                  <div className="text-right">
+                                    <div className="text-sm font-medium text-gray-900">
+                                      April 12, 2024
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      2:30 PM
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      setExpandedTimeline(
+                                        expandedTimeline === "followup"
+                                          ? null
+                                          : "followup"
+                                      )
+                                    }
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                  >
+                                    {expandedTimeline === "followup" ? (
+                                      <ChevronUp className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Expanded Details */}
+                            {expandedTimeline === "followup" && (
+                              <div className="border-t border-gray-100 p-4 bg-gray-50">
+                                <div className="space-y-4">
+                                  <div className="flex items-center space-x-2">
+                                    <UserIcon className="w-4 h-4 text-gray-500" />
+                                    <span className="text-sm font-medium text-gray-700">
+                                      Consulted: Dr. Michael Chen
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-gray-600">
+                                    Blood glucose levels improved with current
+                                    medication. Blood pressure remains elevated
+                                    at 140/90. Recommended lifestyle
+                                    modifications including diet changes and
+                                    increased physical activity. Prescribed
+                                    Metformin dosage adjustment and added
+                                    Lisinopril for blood pressure management.
+                                  </p>
+                                  <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                    <span className="flex items-center space-x-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>Duration: 45 minutes</span>
+                                    </span>
+                                    <span className="flex items-center space-x-1">
+                                      <FileText className="w-3 h-3" />
+                                      <span>2 documents uploaded</span>
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                      <div className="flex items-start space-x-4">
-                        <div className="w-3 h-3 bg-green-500 rounded-full mt-2"></div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-gray-900">
-                              Initial Consultation
-                            </h4>
-                            <span className="text-sm text-gray-500">
-                              March 15, 2024
-                            </span>
+                      {/* Lab Results Review */}
+                      <div className="relative">
+                        <div className="flex items-start">
+                          {/* Timeline Node */}
+                          <div className="relative z-10 flex-shrink-0">
+                            <div className="w-12 h-12 bg-blue-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                              <FileText className="w-5 h-5 text-white" />
+                            </div>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Initial consultation completed. Patient reported
-                            symptoms and medical history was reviewed.
-                          </p>
+
+                          {/* Content Card */}
+                          <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
+                            {/* Collapsed View */}
+                            <div className="p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h4 className="text-xl font-semibold text-gray-900">
+                                    Lab Results Review
+                                  </h4>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    Review of blood work and diagnostic tests
+                                    ordered during initial consultation.
+                                  </p>
+                                </div>
+                                <div className="flex items-center space-x-3 ml-4">
+                                  <div className="text-right">
+                                    <div className="text-sm font-medium text-gray-900">
+                                      March 28, 2024
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      10:15 AM
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      setExpandedTimeline(
+                                        expandedTimeline === "lab"
+                                          ? null
+                                          : "lab"
+                                      )
+                                    }
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                  >
+                                    {expandedTimeline === "lab" ? (
+                                      <ChevronUp className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Expanded Details */}
+                            {expandedTimeline === "lab" && (
+                              <div className="border-t border-gray-100 p-4 bg-gray-50">
+                                <div className="space-y-4">
+                                  <div className="flex items-center space-x-2">
+                                    <UserIcon className="w-4 h-4 text-gray-500" />
+                                    <span className="text-sm font-medium text-gray-700">
+                                      Consulted: Dr. Emily Wilson
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-gray-600">
+                                    Blood glucose: 180 mg/dL (elevated), HbA1c:
+                                    7.2% (diabetes range). Cholesterol panel
+                                    shows high LDL at 160 mg/dL. Kidney function
+                                    normal. Recommended starting Metformin 500mg
+                                    twice daily and dietary consultation.
+                                  </p>
+                                  <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                    <span className="flex items-center space-x-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>Duration: 30 minutes</span>
+                                    </span>
+                                    <span className="flex items-center space-x-1">
+                                      <FileText className="w-3 h-3" />
+                                      <span>5 documents uploaded</span>
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                      <div className="flex items-start space-x-4">
-                        <div className="w-3 h-3 bg-blue-500 rounded-full mt-2"></div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-medium text-gray-900">
-                              Lab Tests Ordered
-                            </h4>
-                            <span className="text-sm text-gray-500">
-                              March 20, 2024
-                            </span>
+                      {/* Initial Consultation */}
+                      <div className="relative">
+                        <div className="flex items-start">
+                          {/* Timeline Node */}
+                          <div className="relative z-10 flex-shrink-0">
+                            <div className="w-12 h-12 bg-purple-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                              <Stethoscope className="w-5 h-5 text-white" />
+                            </div>
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Blood work and imaging tests ordered for further
-                            diagnosis.
-                          </p>
+
+                          {/* Content Card */}
+                          <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
+                            {/* Collapsed View */}
+                            <div className="p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h4 className="text-xl font-semibold text-gray-900">
+                                    Initial Consultation
+                                  </h4>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    First visit for evaluation of diabetes
+                                    symptoms and general health assessment.
+                                  </p>
+                                </div>
+                                <div className="flex items-center space-x-3 ml-4">
+                                  <div className="text-right">
+                                    <div className="text-sm font-medium text-gray-900">
+                                      March 15, 2024
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      9:00 AM
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      setExpandedTimeline(
+                                        expandedTimeline === "initial"
+                                          ? null
+                                          : "initial"
+                                      )
+                                    }
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                  >
+                                    {expandedTimeline === "initial" ? (
+                                      <ChevronUp className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Expanded Details */}
+                            {expandedTimeline === "initial" && (
+                              <div className="border-t border-gray-100 p-4 bg-gray-50">
+                                <div className="space-y-4">
+                                  <div className="flex items-center space-x-2">
+                                    <UserIcon className="w-4 h-4 text-gray-500" />
+                                    <span className="text-sm font-medium text-gray-700">
+                                      Consulted: Dr. Michael Chen
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-gray-600">
+                                    Patient presented with frequent urination,
+                                    increased thirst, and fatigue. Family
+                                    history of diabetes noted. Physical
+                                    examination revealed elevated blood
+                                    pressure. Ordered comprehensive blood work
+                                    including glucose, HbA1c, and lipid panel.
+                                    Scheduled follow-up for results review.
+                                  </p>
+                                  <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                    <span className="flex items-center space-x-1">
+                                      <Clock className="w-3 h-3" />
+                                      <span>Duration: 60 minutes</span>
+                                    </span>
+                                    <span className="flex items-center space-x-1">
+                                      <FileText className="w-3 h-3" />
+                                      <span>3 documents uploaded</span>
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Patient Registration */}
+                      <div className="relative">
+                        <div className="flex items-start">
+                          {/* Timeline Node */}
+                          <div className="relative z-10 flex-shrink-0">
+                            <div className="w-12 h-12 bg-gray-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                              <UserIcon className="w-5 h-5 text-white" />
+                            </div>
+                          </div>
+
+                          {/* Content Card */}
+                          <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
+                            {/* Collapsed View */}
+                            <div className="p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h4 className="text-xl font-semibold text-gray-900">
+                                    Patient Registration
+                                  </h4>
+                                  <p className="text-sm text-gray-600 mt-1">
+                                    New patient registration and initial medical
+                                    history collection.
+                                  </p>
+                                </div>
+                                <div className="flex items-center space-x-3 ml-4">
+                                  <div className="text-right">
+                                    <div className="text-sm font-medium text-gray-900">
+                                      {formatDate(patient.createdAt)}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      Registration
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      setExpandedTimeline(
+                                        expandedTimeline === "registration"
+                                          ? null
+                                          : "registration"
+                                      )
+                                    }
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                  >
+                                    {expandedTimeline === "registration" ? (
+                                      <ChevronUp className="w-4 h-4" />
+                                    ) : (
+                                      <ChevronDown className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Expanded Details */}
+                            {expandedTimeline === "registration" && (
+                              <div className="border-t border-gray-100 p-4 bg-gray-50">
+                                <div className="space-y-4">
+                                  <div className="flex items-center space-x-2">
+                                    <UserIcon className="w-4 h-4 text-gray-500" />
+                                    <span className="text-sm font-medium text-gray-700">
+                                      Registered by: System Admin
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-gray-600">
+                                    Patient {patient.firstName}{" "}
+                                    {patient.lastName} was registered in the
+                                    system. Initial demographic information,
+                                    contact details, and basic medical history
+                                    were collected. Insurance information
+                                    verified and patient assigned to Dr. Michael
+                                    Chen for primary care.
+                                  </p>
+                                  <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                    <span className="flex items-center space-x-1">
+                                      <UserIcon className="w-3 h-3" />
+                                      <span>
+                                        Patient ID: {patient.patientId}
+                                      </span>
+                                    </span>
+                                    <span className="flex items-center space-x-1">
+                                      <UserIcon className="w-3 h-3" />
+                                      <span>Assigned to: Dr. Michael Chen</span>
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -752,7 +1273,7 @@ const PatientDetails: React.FC = () => {
               {activeTab === "documents" && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-semibold text-gray-900">
+                    <h3 className="text-2xl font-semibold text-gray-900">
                       Uploaded Documents
                     </h3>
                     <button className="btn-primary flex items-center space-x-2">
@@ -761,100 +1282,92 @@ const PatientDetails: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Document Categories */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-gray-900">
-                          Medical Reports
+                  {/* Patient Files */}
+                  {isLoadingFiles ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    </div>
+                  ) : patientFiles.length === 0 ? (
+                    <div className="text-center py-12">
+                      <FileText className="mx-auto h-12 w-12 text-gray-400" />
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">
+                        No documents uploaded
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-500">
+                        Upload documents to see them here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-lg border border-gray-200">
+                      <div className="px-6 py-4 border-b border-gray-200">
+                        <h4 className="text-lg font-medium text-gray-900">
+                          All Documents ({patientFiles.length})
                         </h4>
-                        <span className="text-sm text-gray-500">3 files</span>
                       </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-600">
-                            Blood Test Results.pdf
-                          </span>
-                          <div className="flex items-center space-x-1">
-                            <button className="p-1 text-gray-400 hover:text-gray-600">
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button className="p-1 text-gray-400 hover:text-gray-600">
-                              <Download className="w-4 h-4" />
-                            </button>
+                      <div className="divide-y divide-gray-200">
+                        {patientFiles.map((file, index) => (
+                          <div key={index} className="px-6 py-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-3">
+                                {getFileIcon(
+                                  file.originalName || file.fileName
+                                )}
+                                <div>
+                                  <p className="text-base font-medium text-gray-900">
+                                    {file.originalName || file.fileName}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {file.fileSize
+                                      ? `${(
+                                          file.fileSize /
+                                          1024 /
+                                          1024
+                                        ).toFixed(2)} MB`
+                                      : "Unknown size"}
+                                  </p>
+                                  {file.createdAt && (
+                                    <p className="text-xs text-gray-400">
+                                      Uploaded {formatDate(file.createdAt)}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() =>
+                                    handleFileDownload(
+                                      file.fileKey || file.key,
+                                      file.originalName || file.fileName
+                                    )
+                                  }
+                                  className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
+                                  title="Download"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    handleFileDelete(file.fileKey || file.key)
+                                  }
+                                  className="p-2 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-600">
-                            X-Ray Report.pdf
-                          </span>
-                          <div className="flex items-center space-x-1">
-                            <button className="p-1 text-gray-400 hover:text-gray-600">
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button className="p-1 text-gray-400 hover:text-gray-600">
-                              <Download className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     </div>
-
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-gray-900">
-                          Prescriptions
-                        </h4>
-                        <span className="text-sm text-gray-500">2 files</span>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-600">
-                            Current Medications.pdf
-                          </span>
-                          <div className="flex items-center space-x-1">
-                            <button className="p-1 text-gray-400 hover:text-gray-600">
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button className="p-1 text-gray-400 hover:text-gray-600">
-                              <Download className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg border border-gray-200 p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-gray-900">
-                          Consultation Notes
-                        </h4>
-                        <span className="text-sm text-gray-500">1 file</span>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                          <span className="text-sm text-gray-600">
-                            Initial Consultation.pdf
-                          </span>
-                          <div className="flex items-center space-x-1">
-                            <button className="p-1 text-gray-400 hover:text-gray-600">
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            <button className="p-1 text-gray-400 hover:text-gray-600">
-                              <Download className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 
               {activeTab === "diagnosis" && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-semibold text-gray-900">
+                    <h3 className="text-2xl font-semibold text-gray-900">
                       AI Diagnosis
                     </h3>
                     <button
@@ -876,7 +1389,7 @@ const PatientDetails: React.FC = () => {
                   {/* File Upload Section */}
                   <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-lg font-medium text-gray-900">
+                      <h4 className="text-xl font-medium text-gray-900">
                         Upload New Files for Analysis
                       </h4>
                       <div className="flex items-center space-x-2">
@@ -909,7 +1422,7 @@ const PatientDetails: React.FC = () => {
                     {/* Uploaded Files List */}
                     {uploadedFiles.length > 0 && (
                       <div className="space-y-3">
-                        <h5 className="text-sm font-medium text-gray-700">
+                        <h5 className="text-base font-medium text-gray-700">
                           Selected Files:
                         </h5>
                         {uploadedFiles.map((file, index) => (
@@ -920,7 +1433,7 @@ const PatientDetails: React.FC = () => {
                             <div className="flex items-center space-x-3">
                               {getFileIcon(file.name)}
                               <div>
-                                <p className="text-sm font-medium text-gray-900">
+                                <p className="text-base font-medium text-gray-900">
                                   {file.name}
                                 </p>
                                 <p className="text-xs text-gray-500">
