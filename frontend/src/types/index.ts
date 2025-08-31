@@ -100,6 +100,96 @@ export interface ConfirmUploadResponse {
   };
 }
 
+export interface BulkDeleteResponse {
+  success: boolean;
+  message: string;
+  results: {
+    successful: Array<{
+      fileKey: string;
+      fileName: string;
+      success: boolean;
+    }>;
+    failed: Array<{
+      fileKey: string;
+      fileName: string;
+      error: string;
+    }>;
+  };
+  summary: {
+    total: number;
+    successful: number;
+    failed: number;
+  };
+  unauthorizedFiles?: string[];
+}
+
+// AI Analysis Types
+export interface MedicalEntity {
+  entity: string;
+  type:
+    | "symptom"
+    | "diagnosis"
+    | "medication"
+    | "procedure"
+    | "body_part"
+    | "condition"
+    | "measurement";
+  confidence: number;
+}
+
+export interface ImageFinding {
+  finding: string;
+  confidence: number;
+  boundingBox?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface Abnormality {
+  abnormality: string;
+  severity: "low" | "medium" | "high" | "critical";
+  confidence: number;
+  description: string;
+}
+
+export interface AIAnalysisResult {
+  confidence?: number;
+  extractedText?: string;
+  summary?: string;
+  keyFindings: string[];
+  recommendations: string[];
+  medicalEntities: MedicalEntity[];
+  imageFindings: ImageFinding[];
+  abnormalities: Abnormality[];
+  modelResults: Record<string, any>;
+  finalReport?: string;
+  processingTime?: number;
+}
+
+export interface AIAnalysis {
+  _id: string;
+  patientId: string | User;
+  documentId: string;
+  analysisId: string;
+  fileName: string;
+  analysisType: string;
+  documentType?: "image" | "text" | "pdf" | "mixed";
+  contentType?: string;
+  analysisResult: AIAnalysisResult;
+  status: "pending" | "processing" | "completed" | "failed";
+  errorMessage?: string;
+  processedBy?: string | User;
+  metadata?: Record<string, string>;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  formattedProcessingTime?: string;
+  statusBadge?: string;
+}
+
 export interface AuthContextType {
   user: User | null;
   token: string | null;

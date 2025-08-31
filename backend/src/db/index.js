@@ -13,6 +13,7 @@ const AIModel = require("./schemas/AIModel");
 const SystemSetting = require("./schemas/SystemSetting");
 const UploadRecord = require("./schemas/UploadRecord");
 const Timeline = require("./schemas/Timeline");
+const AIAnalysis = require("./schemas/AIAnalysis");
 
 // Export all models
 module.exports = {
@@ -29,4 +30,5 @@ module.exports = {
   SystemSetting,
   UploadRecord,
   Timeline,
+  AIAnalysis,
 };

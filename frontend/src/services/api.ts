@@ -6,6 +6,7 @@ import {
   User,
   UploadResponse,
   ConfirmUploadResponse,
+  BulkDeleteResponse,
 } from "../types";
 
 const API_BASE_URL =
@@ -200,7 +201,45 @@ export const uploadAPI = {
   },
 
   deleteFile: async (key: string): Promise<ApiResponse> => {
-    const response = await api.delete<ApiResponse>(`/upload/delete/${key}`);
+    const response = await api.delete<ApiResponse>(
+      `/upload/delete/${encodeURIComponent(key)}`
+    );
+    return response.data;
+  },
+
+  bulkDeleteFiles: async (fileKeys: string[]): Promise<BulkDeleteResponse> => {
+    const response = await api.delete<BulkDeleteResponse>(
+      "/upload/bulk-delete",
+      {
+        data: { fileKeys },
+      }
+    );
+    return response.data;
+  },
+
+  // AI Analysis API
+  analyzeDocument: async (
+    uploadId: string,
+    patientId: string
+  ): Promise<ApiResponse> => {
+    const response = await api.post<ApiResponse>("/upload/analyze", {
+      uploadId,
+      patientId,
+    });
+    return response.data;
+  },
+
+  getAnalysis: async (analysisId: string): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(
+      `/upload/analysis/${analysisId}`
+    );
+    return response.data;
+  },
+
+  getPatientAnalysis: async (patientId: string): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(
+      `/upload/patient/${patientId}/analysis`
+    );
     return response.data;
   },
 };

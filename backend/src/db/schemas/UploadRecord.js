@@ -24,6 +24,11 @@ const uploadRecordSchema = new mongoose.Schema({
     enum: ["pending", "completed", "failed"],
     default: "pending",
   },
+  documentType: {
+    type: String,
+    enum: ["user-uploaded", "ai-analysis-report"],
+    default: "user-uploaded",
+  },
   fileSize: Number,
   contentType: String,
   uploadId: String, // For tracking the upload session
