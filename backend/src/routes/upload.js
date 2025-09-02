@@ -89,8 +89,8 @@ const uploadToR2 = async (file, patientId, userId) => {
     const contentType =
       contentTypeMap[fileExtension] || "application/octet-stream";
 
-    // Create unique key for R2
-    const key = `patients/${patientId}/documents/${uuidv4()}-${Date.now()}${fileExtension}`;
+    // Create unique key for R2 - User uploaded documents go to uploaded-by-user folder
+    const key = `patients/${patientId}/uploaded-by-user/${uuidv4()}-${Date.now()}${fileExtension}`;
 
     const uploadParams = {
       Bucket: "medlens-documents", // Replace with your R2 bucket name
@@ -187,9 +187,9 @@ router.post(
             continue;
           }
 
-          // Generate unique key with patient ID
+          // Generate unique key with patient ID - User uploaded documents go to uploaded-by-user folder
           const fileExtension = path.extname(fileName);
-          const uniqueKey = `patients/${patientId}/documents/${uuidv4()}-${Date.now()}${fileExtension}`;
+          const uniqueKey = `patients/${patientId}/uploaded-by-user/${uuidv4()}-${Date.now()}${fileExtension}`;
 
           // Create presigned URL
           const params = {
@@ -216,6 +216,7 @@ router.post(
             originalName: fileName,
             uploadedBy: userId,
             status: "pending",
+            documentType: "uploaded-by-user", // Explicitly set document type
             fileSize,
             contentType: fileType,
             uploadId: uuidv4(),
@@ -379,25 +380,86 @@ router.get(
   requireAnyDoctor,
   async (req, res) => {
     try {
+      console.log("🔍 Download request received:", {
+        key: req.params.key,
+        keyType: typeof req.params.key,
+        keyLength: req.params.key?.length,
+        userId: req.user._id,
+        userRole: req.user.role,
+        timestamp: new Date().toISOString(),
+      });
+
       const { key } = req.params;
       const userId = req.user._id;
 
       // Verify file exists in database
+      console.log("🔍 Looking up file in database with key:", key);
       const uploadRecord = await UploadRecord.findOne({ fileKey: key });
+      console.log("🔍 Database lookup result:", {
+        found: !!uploadRecord,
+        recordId: uploadRecord?._id,
+        patientId: uploadRecord?.patientId,
+        documentType: uploadRecord?.documentType,
+        contentType: uploadRecord?.contentType,
+      });
+
       if (!uploadRecord) {
+        console.log("❌ File not found in database for key:", key);
         return res.status(404).json({
           success: false,
           message: "File not found",
         });
       }
 
-      // Verify access (uploader or admin)
+      // Verify access (uploader or any doctor with patient access)
       if (uploadRecord.uploadedBy.toString() !== userId.toString()) {
-        return res.status(403).json({
-          success: false,
-          message: "Not authorized to download this file",
-        });
+        // Check if user has access to the patient
+        const patient = await Patient.findById(uploadRecord.patientId);
+        if (!patient) {
+          return res.status(404).json({
+            success: false,
+            message: "Patient not found",
+          });
+        }
+
+        // For AI analysis reports, allow any doctor with patient access
+        if (uploadRecord.documentType === "ai-analysis-report") {
+          // Allow access for any authenticated doctor
+          console.log(
+            `✅ Doctor ${userId} accessing AI analysis report for patient ${uploadRecord.patientId}`
+          );
+        } else {
+          // For other files, check if user is assigned to this patient
+          const user = await User.findById(userId);
+          if (!user) {
+            return res.status(403).json({
+              success: false,
+              message: "User not found",
+            });
+          }
+
+          // Check if user has access to this patient
+          const hasPatientAccess =
+            user.assignedPatients?.includes(
+              uploadRecord.patientId.toString()
+            ) ||
+            user.role === "admin" ||
+            user.role === "senior_doctor";
+
+          if (!hasPatientAccess) {
+            return res.status(403).json({
+              success: false,
+              message: "Not authorized to access this patient's files",
+            });
+          }
+        }
       }
+
+      console.log("🔍 Generating S3 presigned URL with params:", {
+        Bucket: "medlens-documents",
+        Key: key,
+        Expires: 3600,
+      });
 
       const params = {
         Bucket: "medlens-documents",
@@ -406,13 +468,38 @@ router.get(
       };
 
       const presignedUrl = await s3.getSignedUrlPromise("getObject", params);
+      console.log("✅ S3 presigned URL generated successfully");
 
-      res.json({
+      console.log(
+        `📥 Download URL generated for file: ${key}, user: ${userId}, expires: ${new Date(
+          Date.now() + 3600000
+        ).toISOString()}`
+      );
+
+      const responseData = {
         success: true,
         downloadUrl: presignedUrl,
+        expiresIn: 3600,
+        fileName: uploadRecord.originalName,
+        contentType: uploadRecord.contentType,
+      };
+
+      console.log("✅ Sending successful response:", {
+        success: responseData.success,
+        fileName: responseData.fileName,
+        contentType: responseData.contentType,
+        downloadUrlLength: responseData.downloadUrl?.length || 0,
       });
+
+      res.json(responseData);
     } catch (error) {
-      console.error("Error generating download URL:", error);
+      console.error("❌ Error generating download URL:", {
+        error: error.message,
+        stack: error.stack,
+        key: req.params.key,
+        userId: req.user?._id,
+        timestamp: new Date().toISOString(),
+      });
       res.status(500).json({
         success: false,
         message: "Error generating download URL",
@@ -837,38 +924,15 @@ async function startAIAnalysis(uploadRecord, patientId, userId) {
         recommendations: extractRecommendations(aiResult.data),
         modelResults: aiResult.data.models,
         processingTime: aiResult.data.processingTime,
+        rawResponse:
+          aiResult.data.models?.huggingface?.rawResponse ||
+          aiResult.data.summary,
       };
       console.log("✅ Analysis results processed successfully");
 
-      // Create AI analysis report document
-      const aiReportRecord = new UploadRecord({
-        patientId,
-        fileKey: `ai-reports/${patientId}/${
-          aiAnalysis.analysisId
-        }-${Date.now()}.txt`,
-        originalName: `AI_Analysis_${uploadRecord.originalName.replace(
-          /\.[^/.]+$/,
-          ""
-        )}.txt`,
-        uploadedBy: userId,
-        status: "completed",
-        documentType: "ai-analysis-report",
-        fileSize: aiResult.data.summary ? aiResult.data.summary.length : 0,
-        contentType: "text/plain",
-        completedAt: new Date(),
-        metadata: {
-          patientId: patientId,
-          uploadedBy: userId.toString(),
-          originalName: `AI_Analysis_${uploadRecord.originalName}`,
-          analysisId: aiAnalysis.analysisId,
-          originalDocumentId: uploadRecord._id,
-        },
-      });
-
-      await aiReportRecord.save();
+      // No longer creating text files - only PDF reports
       console.log(
-        "✅ AI analysis report document created:",
-        aiReportRecord._id
+        "📄 Skipping text file creation - only PDF will be generated"
       );
 
       // Generate and upload PDF report
@@ -879,54 +943,84 @@ async function startAIAnalysis(uploadRecord, patientId, userId) {
         const patient = await Patient.findById(patientId);
         const user = await User.findById(userId);
 
-        if (patient && user) {
-          const pdfService = new PDFService();
-
-          // Generate PDF
-          const pdfResult = await pdfService.generateAIAnalysisPDF(
-            aiAnalysis,
-            patient,
-            user
-          );
-
-          // Upload PDF to R2
-          const pdfFileKey = `ai-reports/${patientId}/pdf/${
-            aiAnalysis.analysisId
-          }-${Date.now()}.pdf`;
-          const uploadResult = await pdfService.uploadPDFToR2(
-            pdfResult.filePath,
-            pdfFileKey
-          );
-
-          // Create PDF document record
-          const pdfRecord = new UploadRecord({
-            patientId,
-            fileKey: pdfFileKey,
-            originalName: `AI_Analysis_${uploadRecord.originalName.replace(
-              /\.[^/.]+$/,
-              ""
-            )}.pdf`,
-            uploadedBy: userId,
-            status: "completed",
-            documentType: "ai-analysis-report",
-            fileSize: uploadResult.fileSize,
-            contentType: "application/pdf",
-            completedAt: new Date(),
-            metadata: {
-              patientId: patientId,
-              uploadedBy: userId.toString(),
-              originalName: `AI_Analysis_${uploadRecord.originalName}.pdf`,
-              analysisId: aiAnalysis.analysisId,
-              originalDocumentId: uploadRecord._id,
-              isPDF: true,
-            },
-          });
-
-          await pdfRecord.save();
-          console.log("✅ PDF report uploaded and saved:", pdfRecord._id);
+        if (!patient) {
+          console.error("❌ Patient not found for PDF generation:", patientId);
+          throw new Error("Patient not found");
         }
+
+        if (!user) {
+          console.error("❌ User not found for PDF generation:", userId);
+          throw new Error("User not found");
+        }
+
+        console.log("✅ Patient and user data retrieved for PDF generation");
+
+        const pdfService = new PDFService();
+
+        // Generate PDF
+        console.log("🔄 Starting PDF generation...");
+        const pdfResult = await pdfService.generateAIAnalysisPDF(
+          aiAnalysis,
+          patient,
+          user
+        );
+        console.log("✅ PDF generated successfully:", pdfResult);
+
+        // Upload PDF to R2 - Goes to ai-analysis-reports folder
+        const pdfFileKey = `patients/${patientId}/ai-analysis-reports/${
+          aiAnalysis.analysisId
+        }-${Date.now()}.pdf`;
+        console.log("📤 Uploading PDF to R2:", pdfFileKey);
+
+        const uploadResult = await pdfService.uploadPDFToR2(
+          pdfResult.filePath,
+          pdfFileKey
+        );
+        console.log("✅ PDF uploaded to R2:", uploadResult);
+
+        // Create PDF document record
+        const pdfRecord = new UploadRecord({
+          patientId,
+          fileKey: pdfFileKey,
+          originalName: `AI_Analysis_${uploadRecord.originalName.replace(
+            /\.[^/.]+$/,
+            ""
+          )}.pdf`,
+          uploadedBy: userId,
+          status: "completed",
+          documentType: "ai-analysis-report",
+          fileSize: uploadResult.fileSize,
+          contentType: "application/pdf", // Ensure this is set correctly
+          completedAt: new Date(),
+          metadata: {
+            patientId: patientId,
+            uploadedBy: userId.toString(),
+            originalName: `AI_Analysis_${uploadRecord.originalName}.pdf`,
+            analysisId: aiAnalysis.analysisId,
+            originalDocumentId: uploadRecord._id,
+            isPDF: true,
+          },
+        });
+
+        console.log(
+          "✅ PDF record created with contentType:",
+          pdfRecord.contentType
+        );
+
+        await pdfRecord.save();
+        console.log("✅ PDF report uploaded and saved:", pdfRecord._id);
+
+        // Update the AI analysis record to include the PDF file reference
+        aiAnalysis.pdfReportId = pdfRecord._id;
+        await aiAnalysis.save();
+        console.log("✅ AI analysis record updated with PDF reference");
       } catch (pdfError) {
         console.error("❌ Error generating/uploading PDF:", pdfError);
+        console.error("PDF Error details:", {
+          name: pdfError.name,
+          message: pdfError.message,
+          stack: pdfError.stack,
+        });
         // Don't fail the entire analysis if PDF generation fails
       }
     } else {

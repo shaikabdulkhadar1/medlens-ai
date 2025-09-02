@@ -3,7 +3,15 @@ require("dotenv").config();
 
 class AIService {
   constructor() {
-    this.token = process.env.HUGGING_FACE_API_KEY;
+    const rawToken = process.env.HUGGING_FACE_API_KEY || "";
+    // Sanitize token: remove leading 'Bearer ' if present and strip wrapping quotes
+    const sanitizedToken = rawToken
+      .trim()
+      .replace(/^Bearer\s+/i, "")
+      .replace(/^"([\s\S]*)"$/u, "$1")
+      .replace(/^'([\s\S]*)'$/u, "$1");
+
+    this.token = sanitizedToken;
     this.client = new InferenceClient(this.token);
   }
 
@@ -27,20 +35,18 @@ class AIService {
 
         console.log("✅ Real AI analysis completed successfully");
 
-        // Format the AI response to remove markdown and improve readability
-        const formattedResponse = this.formatAIResponse(aiResponse);
-
         return {
           success: true,
           data: {
             confidence: 0.85,
-            summary: formattedResponse,
-            keyFindings: this.extractKeyFindings(formattedResponse),
-            recommendations: this.extractRecommendations(formattedResponse),
+            summary: aiResponse,
+            keyFindings: this.extractKeyFindings(aiResponse),
+            recommendations: this.extractRecommendations(aiResponse),
             models: {
               huggingface: {
                 model: "Qwen/Qwen2.5-VL-7B-Instruct",
                 response: aiResponse,
+                rawResponse: aiResponse,
               },
             },
             processingTime: Date.now(),

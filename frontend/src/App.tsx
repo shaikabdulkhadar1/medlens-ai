@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ConsultingDoctorDashboard from "./pages/ConsultingDoctorDashboard";
+import FrontDeskCoordinatorDashboard from "./pages/FrontDeskCoordinatorDashboard";
 import PatientDetails from "./pages/PatientDetails";
 
 // Protected Route Component
@@ -63,6 +64,8 @@ const RoleBasedDashboard: React.FC = () => {
   switch (user.role) {
     case "consulting_doctor":
       return <ConsultingDoctorDashboard />;
+    case "front-desk-coordinator":
+      return <FrontDeskCoordinatorDashboard />;
     case "admin":
     case "senior_doctor":
     default:

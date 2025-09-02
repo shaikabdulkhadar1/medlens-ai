@@ -1,0 +1,28 @@
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"email":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"licenseNumber":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"patientId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"mrn":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"caseNumber":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"storageKey":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"jobId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"reportNumber":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"name":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"key":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGOOSE] Warning: Duplicate schema index on {"analysisId":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:17575) [MONGODB DRIVER] Warning: useNewUrlParser is a deprecated option: useNewUrlParser has no effect since Node.js Driver version 4.0.0 and will be removed in the next major version
+(node:17575) [MONGODB DRIVER] Warning: useUnifiedTopology is a deprecated option: useUnifiedTopology has no effect since Node.js Driver version 4.0.0 and will be removed in the next major version
+(node:17575) NOTE: The AWS SDK for JavaScript (v2) is in maintenance mode.
+ SDK releases are limited to address critical bug fixes and security issues only.
+
+Please migrate your code to use AWS SDK for JavaScript (v3).
+For more information, check the blog post at https://a.co/cUPnyil
+MongoDB Connected: ac-fcrjkfc-shard-00-00.5x6nuuq.mongodb.net
+✅ MongoDB connected successfully
+🚀 Server running on port 5001
+📊 Environment: development
+🔗 Health check: http://localhost:5001/health
+🔗 Database test: http://localhost:5001/api/test-db
+🔗 Create test user: POST http://localhost:5001/api/test-user
+🔗 Get users: GET http://localhost:5001/api/users
+✅ Patient created by front desk coordinator 68b7428dfb471251eebaf760: undefined

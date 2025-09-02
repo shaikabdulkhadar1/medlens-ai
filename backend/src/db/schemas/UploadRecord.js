@@ -26,8 +26,8 @@ const uploadRecordSchema = new mongoose.Schema({
   },
   documentType: {
     type: String,
-    enum: ["user-uploaded", "ai-analysis-report"],
-    default: "user-uploaded",
+    enum: ["uploaded-by-user", "ai-analysis-report"],
+    default: "uploaded-by-user",
   },
   fileSize: Number,
   contentType: String,

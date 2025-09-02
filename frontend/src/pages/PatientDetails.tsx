@@ -2,7 +2,15 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { authAPI, uploadAPI, timelineAPI } from "../services/api";
-import { Patient, UploadResponse, UploadUrl, AIAnalysis } from "../types";
+import {
+  Patient,
+  UploadResponse,
+  UploadUrl,
+  AIAnalysis,
+  UploadRecord,
+} from "../types";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
   User,
@@ -53,12 +61,12 @@ const PatientDetails: React.FC = () => {
   const [cloudUploadProgress, setCloudUploadProgress] = useState<{
     [key: string]: number;
   }>({});
-  const [patientFiles, setPatientFiles] = useState<any[]>([]);
+  const [patientFiles, setPatientFiles] = useState<UploadRecord[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
 
   // Filter files by document type
   const userUploadedFiles = patientFiles.filter(
-    (file) => file.documentType === "user-uploaded" || !file.documentType
+    (file) => file.documentType === "uploaded-by-user" || !file.documentType
   );
   const aiAnalysisReportFiles = patientFiles.filter(
     (file) => file.documentType === "ai-analysis-report"
@@ -79,6 +87,7 @@ const PatientDetails: React.FC = () => {
   const [selectedAnalysis, setSelectedAnalysis] = useState<AIAnalysis | null>(
     null
   );
+  const [selectedFile, setSelectedFile] = useState<UploadRecord | null>(null);
 
   useEffect(() => {
     if (patientId && patientId !== undefined) {
@@ -304,17 +313,47 @@ const PatientDetails: React.FC = () => {
 
   const handleFileDownload = async (fileKey: string, fileName: string) => {
     try {
+      console.log("🔍 Download request:", { fileKey, fileName });
+      console.log("🔍 FileKey type:", typeof fileKey);
+      console.log("🔍 FileKey length:", fileKey?.length);
+      console.log("🔍 FileKey value:", JSON.stringify(fileKey));
+
+      // Check authentication status
+      const token = localStorage.getItem("token");
+      console.log("🔐 Authentication token exists:", !!token);
+      console.log(
+        "🔐 Token value:",
+        token ? `${token.substring(0, 20)}...` : "null"
+      );
+
+      // Check the exact URL being called
+      const apiUrl = `${
+        process.env.REACT_APP_API_URL || "http://localhost:5001/api"
+      }/upload/download/${fileKey}`;
+      console.log("🌐 API URL being called:", apiUrl);
+
       const response = await uploadAPI.getDownloadUrl(fileKey);
-      if (response.success && response.data.downloadUrl) {
+      console.log("📥 Download response:", response);
+      if (response.success && response.downloadUrl) {
         const link = document.createElement("a");
-        link.href = response.data.downloadUrl;
+        link.href = response.downloadUrl;
         link.download = fileName;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
       }
     } catch (error) {
-      console.error("Error downloading file:", error);
+      console.error("❌ Error downloading file:", error);
+      if (error && typeof error === "object" && "response" in error) {
+        const axiosError = error as any;
+        console.error("Error details:", {
+          message: axiosError.message,
+          status: axiosError.response?.status,
+          data: axiosError.response?.data,
+          url: axiosError.config?.url,
+          headers: axiosError.config?.headers,
+        });
+      }
     }
   };
 
@@ -345,6 +384,44 @@ const PatientDetails: React.FC = () => {
           error instanceof Error ? error.message : "Unknown error"
         }`
       );
+    }
+  };
+
+  const handleViewPDF = async (fileKey: string) => {
+    try {
+      console.log("🔍 View PDF request:", { fileKey });
+
+      // Check authentication status
+      const token = localStorage.getItem("token");
+      console.log("🔐 Authentication token exists:", !!token);
+
+      // Check the exact URL being called
+      const apiUrl = `${
+        process.env.REACT_APP_API_URL || "http://localhost:5001/api"
+      }/upload/download/${fileKey}`;
+      console.log("🌐 API URL being called:", apiUrl);
+
+      const response = await uploadAPI.getDownloadUrl(fileKey);
+      console.log("📥 View PDF response:", response);
+      if (response.success && response.downloadUrl) {
+        // Open PDF in new tab
+        window.open(response.downloadUrl, "_blank");
+      } else {
+        alert("Failed to get PDF URL");
+      }
+    } catch (error) {
+      console.error("❌ Error viewing PDF:", error);
+      if (error && typeof error === "object" && "response" in error) {
+        const axiosError = error as any;
+        console.error("Error details:", {
+          message: axiosError.message,
+          status: axiosError.response?.status,
+          data: axiosError.response?.data,
+          url: axiosError.config?.url,
+          headers: axiosError.config?.headers,
+        });
+      }
+      alert("Error viewing PDF file");
     }
   };
 
@@ -1663,13 +1740,13 @@ const PatientDetails: React.FC = () => {
 
               {activeTab === "documents" && (
                 <div className="space-y-6">
-                  {/* Uploaded Documents Section */}
+                  {/* User Uploaded Documents Section - Files stored in patients/{patientId}/uploaded-by-user/ */}
                   <div className="bg-white rounded-lg border border-gray-200">
                     <div className="px-6 py-4 border-b border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <h3 className="text-xl font-semibold text-gray-900">
-                            Uploaded Documents
+                            User Uploaded Documents
                           </h3>
                           <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                             {userUploadedFiles.length}
@@ -1734,22 +1811,20 @@ const PatientDetails: React.FC = () => {
                                   <input
                                     type="checkbox"
                                     checked={selectedDocuments.has(
-                                      file.fileKey || file.key
+                                      file.fileKey
                                     )}
                                     onChange={() =>
-                                      toggleDocumentSelection(
-                                        file.fileKey || file.key
-                                      )
+                                      toggleDocumentSelection(file.fileKey)
                                     }
                                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                                   />
                                   {getFileIcon(
-                                    file.originalName || file.fileName,
+                                    file.originalName,
                                     file.documentType
                                   )}
                                   <div>
                                     <p className="text-base font-medium text-gray-900">
-                                      {file.originalName || file.fileName}
+                                      {file.originalName}
                                     </p>
                                     <p className="text-xs text-gray-500">
                                       {file.fileSize
@@ -1779,8 +1854,8 @@ const PatientDetails: React.FC = () => {
                                   <button
                                     onClick={() =>
                                       handleFileDownload(
-                                        file.fileKey || file.key,
-                                        file.originalName || file.fileName
+                                        file.fileKey,
+                                        file.originalName
                                       )
                                     }
                                     className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
@@ -1791,8 +1866,8 @@ const PatientDetails: React.FC = () => {
                                   <button
                                     onClick={() =>
                                       handleFileDelete(
-                                        file.fileKey || file.key,
-                                        file.originalName || file.fileName
+                                        file.fileKey,
+                                        file.originalName
                                       )
                                     }
                                     className="p-2 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50"
@@ -1809,7 +1884,7 @@ const PatientDetails: React.FC = () => {
                     )}
                   </div>
 
-                  {/* AI Analysis Reports Section */}
+                  {/* AI Analysis Reports Section - Files stored in patients/{patientId}/ai-analysis-reports/ */}
                   <div className="bg-white rounded-lg border border-gray-200">
                     <div className="px-6 py-4 border-b border-gray-200">
                       <div className="flex items-center justify-between">
@@ -1901,32 +1976,73 @@ const PatientDetails: React.FC = () => {
                                     </div>
                                   </div>
                                   <div className="flex items-center space-x-2">
+                                    {/* Download Button */}
                                     <button
-                                      onClick={() =>
-                                        setSelectedAnalysis(
-                                          selectedAnalysis === file
-                                            ? null
-                                            : file
-                                        )
-                                      }
-                                      className="p-1 text-gray-400 hover:text-gray-600"
+                                      onClick={() => {
+                                        console.log(
+                                          "🔍 Download button clicked for file:",
+                                          {
+                                            fileId: file._id,
+                                            fileKey: file.fileKey,
+                                            originalName: file.originalName,
+                                            contentType: file.contentType,
+                                            documentType: file.documentType,
+                                            status: file.status,
+                                          }
+                                        );
+                                        handleFileDownload(
+                                          file.fileKey,
+                                          file.originalName ||
+                                            "AI Analysis Report"
+                                        );
+                                      }}
+                                      className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
+                                      title="Download"
                                     >
-                                      {selectedAnalysis === file ? (
-                                        <ChevronUp className="w-4 h-4" />
-                                      ) : (
-                                        <ChevronDown className="w-4 h-4" />
-                                      )}
+                                      <Download className="w-4 h-4" />
                                     </button>
+
+                                    {/* View PDF Button - Only show for PDF files */}
+                                    {file.contentType === "application/pdf" && (
+                                      <button
+                                        onClick={() =>
+                                          handleViewPDF(file.fileKey)
+                                        }
+                                        className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors"
+                                        title="View PDF"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </button>
+                                    )}
+
+                                    {/* Expand button - Only show for non-PDF files */}
+                                    {file.contentType !== "application/pdf" && (
+                                      <button
+                                        onClick={() =>
+                                          setSelectedFile(
+                                            selectedFile === file ? null : file
+                                          )
+                                        }
+                                        className="p-1 text-gray-400 hover:text-gray-600"
+                                      >
+                                        {selectedFile === file ? (
+                                          <ChevronUp className="w-4 h-4" />
+                                        ) : (
+                                          <ChevronDown className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
 
-                                {selectedAnalysis === file && (
-                                  <div className="mt-3 p-3 bg-white rounded border border-gray-200">
-                                    <div className="text-sm text-gray-700">
-                                      AI Analysis Report - {file.originalName}
+                                {selectedFile === file &&
+                                  file.contentType !== "application/pdf" && (
+                                    <div className="mt-3 p-3 bg-white rounded border border-gray-200">
+                                      <div className="text-sm text-gray-700">
+                                        AI Analysis Report - {file.originalName}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  )}
                               </div>
                             ))}
                           </div>
@@ -2201,18 +2317,186 @@ const PatientDetails: React.FC = () => {
                                     {/* AI Analysis Summary */}
                                     {analysis.analysisResult.summary && (
                                       <div>
-                                        <h6 className="text-sm font-medium text-gray-700 mb-2">
-                                          🩺 AI Analysis
-                                        </h6>
+                                        <div className="flex items-center justify-between mb-2">
+                                          <h6 className="text-sm font-medium text-gray-700">
+                                            🩺 AI Analysis
+                                          </h6>
+                                        </div>
                                         <div className="bg-gray-50 rounded-lg p-4 w-full">
-                                          <div className="text-sm text-gray-700 leading-relaxed max-h-96 overflow-y-auto pr-2 whitespace-pre-line">
-                                            {formatAIResponse(
-                                              analysis.analysisResult.summary
-                                            )}
+                                          <div className="text-sm text-gray-700 leading-relaxed max-h-96 overflow-y-auto pr-2">
+                                            <ReactMarkdown
+                                              remarkPlugins={[remarkGfm]}
+                                              components={{
+                                                h1: ({ node, ...props }) => (
+                                                  <h1
+                                                    className="text-lg font-bold text-gray-900 mb-3"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                h2: ({ node, ...props }) => (
+                                                  <h2
+                                                    className="text-base font-semibold text-gray-800 mb-2"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                h3: ({ node, ...props }) => (
+                                                  <h3
+                                                    className="text-sm font-semibold text-gray-700 mb-2"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                h4: ({ node, ...props }) => (
+                                                  <h4
+                                                    className="text-sm font-medium text-gray-700 mb-1"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                h5: ({ node, ...props }) => (
+                                                  <h5
+                                                    className="text-sm font-medium text-gray-600 mb-1"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                h6: ({ node, ...props }) => (
+                                                  <h6
+                                                    className="text-sm font-medium text-gray-600 mb-1"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                p: ({ node, ...props }) => (
+                                                  <p
+                                                    className="mb-2 text-gray-700"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                ul: ({ node, ...props }) => (
+                                                  <ul
+                                                    className="list-disc list-inside mb-2 space-y-1"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                ol: ({ node, ...props }) => (
+                                                  <ol
+                                                    className="list-decimal list-inside mb-2 space-y-1"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                li: ({ node, ...props }) => (
+                                                  <li
+                                                    className="text-gray-700"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                strong: ({
+                                                  node,
+                                                  ...props
+                                                }) => (
+                                                  <strong
+                                                    className="font-semibold text-gray-900"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                em: ({ node, ...props }) => (
+                                                  <em
+                                                    className="italic text-gray-600"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                blockquote: ({
+                                                  node,
+                                                  ...props
+                                                }) => (
+                                                  <blockquote
+                                                    className="border-l-4 border-blue-200 pl-4 py-2 bg-blue-50 text-gray-700 italic"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                code: ({ node, ...props }) => (
+                                                  <code
+                                                    className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono text-gray-800"
+                                                    {...props}
+                                                  />
+                                                ),
+                                                pre: ({ node, ...props }) => (
+                                                  <pre
+                                                    className="bg-gray-100 p-2 rounded text-sm font-mono text-gray-800 overflow-x-auto"
+                                                    {...props}
+                                                  />
+                                                ),
+                                              }}
+                                            >
+                                              {analysis.analysisResult
+                                                .rawResponse ||
+                                                analysis.analysisResult.summary}
+                                            </ReactMarkdown>
                                           </div>
                                         </div>
                                       </div>
                                     )}
+
+                                    {/* Key Findings Section */}
+                                    {analysis.analysisResult.keyFindings &&
+                                      analysis.analysisResult.keyFindings
+                                        .length > 0 && (
+                                        <div>
+                                          <div className="flex items-center justify-between mb-2">
+                                            <h6 className="text-sm font-medium text-gray-700">
+                                              🔍 Key Findings
+                                            </h6>
+                                          </div>
+                                          <div className="bg-blue-50 rounded-lg p-4">
+                                            <ul className="space-y-2">
+                                              {analysis.analysisResult.keyFindings.map(
+                                                (finding, index) => (
+                                                  <li
+                                                    key={index}
+                                                    className="flex items-start space-x-2"
+                                                  >
+                                                    <span className="text-blue-600 mt-1">
+                                                      •
+                                                    </span>
+                                                    <span className="text-sm text-gray-700">
+                                                      {finding}
+                                                    </span>
+                                                  </li>
+                                                )
+                                              )}
+                                            </ul>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                    {/* Recommendations Section */}
+                                    {analysis.analysisResult.recommendations &&
+                                      analysis.analysisResult.recommendations
+                                        .length > 0 && (
+                                        <div>
+                                          <div className="flex items-center justify-between mb-2">
+                                            <h6 className="text-sm font-medium text-gray-700">
+                                              💡 Recommendations
+                                            </h6>
+                                          </div>
+                                          <div className="bg-green-50 rounded-lg p-4">
+                                            <ul className="space-y-2">
+                                              {analysis.analysisResult.recommendations.map(
+                                                (recommendation, index) => (
+                                                  <li
+                                                    key={index}
+                                                    className="flex items-start space-x-2"
+                                                  >
+                                                    <span className="text-green-600 mt-1">
+                                                      •
+                                                    </span>
+                                                    <span className="text-sm text-gray-700">
+                                                      {recommendation}
+                                                    </span>
+                                                  </li>
+                                                )
+                                              )}
+                                            </ul>
+                                          </div>
+                                        </div>
+                                      )}
                                   </div>
                                 )}
 

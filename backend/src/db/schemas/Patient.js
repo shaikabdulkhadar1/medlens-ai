@@ -4,7 +4,7 @@ const patientSchema = new mongoose.Schema(
   {
     patientId: {
       type: String,
-      required: [true, "Patient ID is required"],
+      required: false, // Will be auto-generated if not provided
       unique: true,
       trim: true,
     },
@@ -172,6 +172,10 @@ const patientSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    lastVisited: {
+      type: Date,
+      default: Date.now,
+    },
     notes: {
       type: String,
       maxlength: [1000, "Notes cannot exceed 1000 characters"],
@@ -179,7 +183,49 @@ const patientSchema = new mongoose.Schema(
     assignedDoctor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: [true, "Assigned doctor is required"],
+      // Not required initially - can be assigned later by junior doctor
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "Creator is required"],
+    },
+    status: {
+      type: String,
+      enum: ["active", "case_closed"],
+      default: "active",
+    },
+    frontDeskNotes: {
+      initialDiagnosis: {
+        type: String,
+        maxlength: [500, "Initial diagnosis cannot exceed 500 characters"],
+      },
+      symptoms: [
+        {
+          type: String,
+          trim: true,
+          maxlength: [200, "Symptom cannot exceed 200 characters"],
+        },
+      ],
+      observations: {
+        type: String,
+        maxlength: [1000, "Observations cannot exceed 1000 characters"],
+      },
+      createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+      updatedAt: {
+        type: Date,
+      },
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
     },
   },
   {

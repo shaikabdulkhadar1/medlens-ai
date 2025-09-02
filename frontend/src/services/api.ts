@@ -7,6 +7,7 @@ import {
   UploadResponse,
   ConfirmUploadResponse,
   BulkDeleteResponse,
+  DownloadUrlResponse,
 } from "../types";
 
 const API_BASE_URL =
@@ -195,8 +196,10 @@ export const uploadAPI = {
     return response.data;
   },
 
-  getDownloadUrl: async (key: string): Promise<ApiResponse> => {
-    const response = await api.get<ApiResponse>(`/upload/download/${key}`);
+  getDownloadUrl: async (key: string): Promise<DownloadUrlResponse> => {
+    const response = await api.get<DownloadUrlResponse>(
+      `/upload/download/${encodeURIComponent(key)}`
+    );
     return response.data;
   },
 
@@ -295,6 +298,88 @@ export const dashboardAPI = {
         recentActivity: [],
       },
     };
+  },
+};
+
+// Front Desk Coordinator API
+export const frontDeskCoordinatorAPI = {
+  // Patient Management
+  createPatient: async (patientData: any): Promise<ApiResponse> => {
+    const response = await api.post<ApiResponse>(
+      "/front-desk-coordinator/patients",
+      patientData
+    );
+    return response.data;
+  },
+
+  getPatients: async (): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(
+      "/front-desk-coordinator/patients"
+    );
+    return response.data;
+  },
+
+  getMyPatients: async (): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(
+      "/front-desk-coordinator/my-patients"
+    );
+    return response.data;
+  },
+
+  getPatient: async (patientId: string): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(
+      `/front-desk-coordinator/patients/${patientId}`
+    );
+    return response.data;
+  },
+
+  updatePatientDiagnosis: async (
+    patientId: string,
+    diagnosisData: any
+  ): Promise<ApiResponse> => {
+    const response = await api.put<ApiResponse>(
+      `/front-desk-coordinator/patients/${patientId}/diagnosis`,
+      diagnosisData
+    );
+    return response.data;
+  },
+
+  // Senior Doctor Management
+  getSeniorDoctors: async (): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(
+      "/front-desk-coordinator/senior-doctors"
+    );
+    return response.data;
+  },
+
+  // Patient Update and Doctor Assignment
+  updatePatient: async (
+    patientId: string,
+    patientData: any
+  ): Promise<ApiResponse> => {
+    const response = await api.put<ApiResponse>(
+      `/front-desk-coordinator/patients/${patientId}`,
+      patientData
+    );
+    return response.data;
+  },
+
+  assignDoctor: async (
+    patientId: string,
+    doctorId: string
+  ): Promise<ApiResponse> => {
+    const response = await api.put<ApiResponse>(
+      `/front-desk-coordinator/patients/${patientId}/assign-doctor`,
+      { doctorId }
+    );
+    return response.data;
+  },
+
+  unassignDoctor: async (patientId: string): Promise<ApiResponse> => {
+    const response = await api.put<ApiResponse>(
+      `/front-desk-coordinator/patients/${patientId}/unassign-doctor`
+    );
+    return response.data;
   },
 };
 

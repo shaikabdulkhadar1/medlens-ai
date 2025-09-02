@@ -80,6 +80,25 @@ const requireAnyDoctor = requireRole([
   "consulting_doctor",
 ]);
 
+// Middleware to check if user is front desk coordinator, consulting doctor, senior doctor, or admin
+const requireAnyMedicalStaff = requireRole([
+  "admin",
+  "senior_doctor",
+  "consulting_doctor",
+  "front-desk-coordinator",
+]);
+
+// Middleware specifically for front desk coordinators
+const requireFrontDeskCoordinator = requireRole(["front-desk-coordinator"]);
+
+// Middleware for front desk coordinators and above
+const requireFrontDeskCoordinatorOrAbove = requireRole([
+  "admin",
+  "senior_doctor",
+  "consulting_doctor",
+  "front-desk-coordinator",
+]);
+
 // Middleware to check if user can access specific user data
 const canAccessUser = async (req, res, next) => {
   try {
@@ -243,6 +262,9 @@ module.exports = {
   requireAdmin,
   requireSeniorDoctorOrAdmin,
   requireAnyDoctor,
+  requireAnyMedicalStaff,
+  requireFrontDeskCoordinator,
+  requireFrontDeskCoordinatorOrAbove,
   canAccessUser,
   canAccessPatient,
   canAccessPatientMiddleware,

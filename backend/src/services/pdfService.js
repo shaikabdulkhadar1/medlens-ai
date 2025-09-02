@@ -92,10 +92,12 @@ class PDFService {
 
         doc.fontSize(10).font("Helvetica").fillColor("#1f2937");
 
-        // Format and add the analysis summary
-        const summary = analysisData.analysisResult.summary;
+        // Format and add the analysis summary with proper markdown formatting
+        const summary =
+          analysisData.analysisResult.rawResponse ||
+          analysisData.analysisResult.summary;
         if (summary) {
-          const formattedSummary = this.formatTextForPDF(summary);
+          const formattedSummary = this.formatMarkdownForPDF(summary);
           doc.text(formattedSummary, {
             align: "justify",
             lineGap: 2,
@@ -184,6 +186,50 @@ class PDFService {
       .trim();
   }
 
+  formatMarkdownForPDF(markdownText) {
+    // Enhanced markdown formatting for PDF
+    let formatted = markdownText
+      // Remove HTML tags
+      .replace(/<[^>]*>/g, "")
+      // Remove code blocks
+      .replace(/```[\s\S]*?```/g, "")
+      // Remove inline code
+      .replace(/`([^`]+)`/g, "$1")
+      // Remove horizontal rules
+      .replace(/^---$/gm, "")
+      // Remove extra asterisks
+      .replace(/\*+/g, "")
+      .trim();
+
+    // Process headers
+    formatted = formatted
+      .replace(/^#\s+(.+)$/gm, "\n$1\n") // H1
+      .replace(/^##\s+(.+)$/gm, "\n$1\n") // H2
+      .replace(/^###\s+(.+)$/gm, "\n$1\n") // H3
+      .replace(/^####\s+(.+)$/gm, "\n$1\n"); // H4
+
+    // Process bullet points
+    formatted = formatted
+      .replace(/^[-*•]\s+(.+)$/gm, "• $1") // Convert to bullet points
+      .replace(/^\d+\.\s+(.+)$/gm, "$1"); // Remove numbered list formatting
+
+    // Process emphasis
+    formatted = formatted
+      .replace(/\*\*(.+?)\*\*/g, "$1") // Bold
+      .replace(/\*(.+?)\*/g, "$1"); // Italic
+
+    // Process blockquotes
+    formatted = formatted.replace(/^>\s+(.+)$/gm, "$1"); // Remove blockquote formatting
+
+    // Clean up spacing
+    formatted = formatted
+      .replace(/\n{3,}/g, "\n\n") // Limit consecutive newlines
+      .replace(/\s{2,}/g, " ") // Remove multiple spaces
+      .trim();
+
+    return formatted;
+  }
+
   calculateAge(dateOfBirth) {
     const birthDate = new Date(dateOfBirth);
     const today = new Date();
@@ -215,7 +261,16 @@ class PDFService {
         },
       };
 
-      const { s3 } = require("../config/r2");
+      // Use the same AWS S3 configuration as the upload routes
+      const AWS = require("aws-sdk");
+      const s3 = new AWS.S3({
+        endpoint: process.env.R2_ENDPOINT,
+        accessKeyId: process.env.R2_ACCESS_KEY_ID,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+        region: "auto", // R2 doesn't use regions like S3
+        signatureVersion: "v4",
+      });
+
       await s3.upload(params).promise();
 
       // Clean up local file

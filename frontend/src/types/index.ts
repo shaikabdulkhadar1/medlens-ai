@@ -3,7 +3,11 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: "admin" | "senior_doctor" | "consulting_doctor";
+  role:
+    | "admin"
+    | "senior_doctor"
+    | "consulting_doctor"
+    | "front-desk-coordinator";
   specialization?: string;
   licenseNumber?: string;
   hospital?: string;
@@ -123,6 +127,38 @@ export interface BulkDeleteResponse {
   unauthorizedFiles?: string[];
 }
 
+export interface DownloadUrlResponse {
+  success: boolean;
+  downloadUrl: string;
+  expiresIn: number;
+  fileName: string;
+  contentType: string;
+}
+
+export interface UploadRecord {
+  _id: string;
+  patientId: string;
+  fileKey: string;
+  originalName: string;
+  uploadedBy: string;
+  status: "pending" | "completed" | "failed";
+  documentType: "uploaded-by-user" | "ai-analysis-report";
+  fileSize: number;
+  contentType: string;
+  uploadId?: string;
+  createdAt: string;
+  completedAt?: string;
+  errorMessage?: string;
+  metadata?: {
+    patientId: string;
+    uploadedBy: string;
+    originalName: string;
+    analysisId?: string;
+    originalDocumentId?: string;
+    isPDF?: boolean;
+  };
+}
+
 // AI Analysis Types
 export interface MedicalEntity {
   entity: string;
@@ -159,6 +195,7 @@ export interface AIAnalysisResult {
   confidence?: number;
   extractedText?: string;
   summary?: string;
+  rawResponse?: string;
   keyFindings: string[];
   recommendations: string[];
   medicalEntities: MedicalEntity[];
@@ -269,9 +306,26 @@ export interface Patient {
     temperature?: number;
     lastUpdated?: string;
   };
-  assignedDoctor: string | User;
+  assignedDoctor?: string | User;
+  createdBy?: string | User;
+  status?:
+    | "active"
+    | "assigned_to_senior"
+    | "under_treatment"
+    | "discharged"
+    | "archived";
   isActive: boolean;
+  lastVisited?: string;
   notes?: string;
+  frontDeskNotes?: {
+    initialDiagnosis?: string;
+    symptoms?: string[];
+    observations?: string;
+    createdBy?: string | User;
+    createdAt?: string;
+    updatedAt?: string;
+    updatedBy?: string | User;
+  };
   createdAt: string;
   updatedAt: string;
   fullName?: string;
@@ -289,4 +343,65 @@ export interface DashboardStats {
     message: string;
     timestamp: string;
   }>;
+}
+
+// Junior Doctor Types
+export interface CreatePatientRequest {
+  patientId?: string;
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+  gender: "male" | "female" | "other";
+  contactInfo?: {
+    phone?: string;
+    email?: string;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      zipCode?: string;
+      country?: string;
+    };
+  };
+  emergencyContact?: {
+    name?: string;
+    relationship?: string;
+    phone?: string;
+    email?: string;
+  };
+  vitalSigns?: {
+    bloodPressure?: string;
+    heartRate?: string;
+    temperature?: string;
+    weight?: string;
+    height?: string;
+    bmi?: string;
+  };
+  medicalConditions?: {
+    diabetes?: boolean;
+    hypertension?: boolean;
+    heartDisease?: boolean;
+    asthma?: boolean;
+  };
+  allergies?: string[];
+  initialDiagnosis?: string;
+  symptoms?: string[];
+  assignedSeniorDoctorId?: string;
+}
+
+export interface UpdateDiagnosisRequest {
+  initialDiagnosis?: string;
+  symptoms?: string[];
+  observations?: string;
+  assignedSeniorDoctorId?: string;
+}
+
+export interface SeniorDoctor {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  specialization?: string;
+  hospital?: string;
+  department?: string;
 }

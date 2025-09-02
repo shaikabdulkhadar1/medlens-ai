@@ -34,7 +34,12 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       required: [true, "Role is required"],
-      enum: ["admin", "senior_doctor", "consulting_doctor"],
+      enum: [
+        "admin",
+        "senior_doctor",
+        "consulting_doctor",
+        "front-desk-coordinator",
+      ],
       default: "consulting_doctor",
     },
     specialization: {
