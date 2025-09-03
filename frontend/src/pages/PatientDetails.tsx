@@ -63,6 +63,10 @@ const PatientDetails: React.FC = () => {
   }>({});
   const [patientFiles, setPatientFiles] = useState<UploadRecord[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<UploadRecord | null>(null);
+  const [activeDocumentTab, setActiveDocumentTab] = useState<"uploaded" | "ai">(
+    "uploaded"
+  );
 
   // Filter files by document type
   const userUploadedFiles = patientFiles.filter(
@@ -87,7 +91,6 @@ const PatientDetails: React.FC = () => {
   const [selectedAnalysis, setSelectedAnalysis] = useState<AIAnalysis | null>(
     null
   );
-  const [selectedFile, setSelectedFile] = useState<UploadRecord | null>(null);
 
   useEffect(() => {
     if (patientId && patientId !== undefined) {
@@ -1005,6 +1008,235 @@ const PatientDetails: React.FC = () => {
                 </div>
               </div>
 
+              {/* Patient Documents */}
+              <div className="mb-8">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                  Patient Documents
+                </h3>
+
+                {/* Document Tabs */}
+                <div className="bg-white rounded-lg border border-gray-200">
+                  <div className="border-b border-gray-200">
+                    <div className="flex">
+                      <button
+                        onClick={() => setActiveDocumentTab("uploaded")}
+                        className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                          activeDocumentTab === "uploaded"
+                            ? "border-primary-500 text-primary-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        <div className="flex items-center justify-center space-x-2">
+                          <FileText className="w-4 h-4" />
+                          <span>Uploaded Documents</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => setActiveDocumentTab("ai")}
+                        className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                          activeDocumentTab === "ai"
+                            ? "border-primary-500 text-primary-600"
+                            : "border-transparent text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        <div className="flex items-center justify-center space-x-2">
+                          <Brain className="w-4 h-4" />
+                          <span>AI Analysis Reports</span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tab Content */}
+                  <div className="p-4">
+                    {activeDocumentTab === "uploaded" && (
+                      <div>
+                        {isLoadingFiles ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                          </div>
+                        ) : userUploadedFiles.length === 0 ? (
+                          <div className="text-center py-8">
+                            <FileText className="mx-auto h-8 w-8 text-gray-400" />
+                            <p className="text-sm text-gray-500 mt-2">
+                              No documents uploaded
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {userUploadedFiles
+                              .slice(0, 5)
+                              .map((file, index) => (
+                                <div
+                                  key={index}
+                                  className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg"
+                                >
+                                  {getFileIcon(
+                                    file.originalName,
+                                    file.documentType
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-900 truncate">
+                                      {file.originalName}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {file.fileSize
+                                        ? `${(
+                                            file.fileSize /
+                                            1024 /
+                                            1024
+                                          ).toFixed(2)} MB`
+                                        : "Unknown size"}
+                                    </p>
+                                    {file.createdAt && (
+                                      <p className="text-xs text-gray-400">
+                                        {formatDate(file.createdAt)}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center space-x-1">
+                                    <button
+                                      onClick={() =>
+                                        handleFileDownload(
+                                          file.fileKey,
+                                          file.originalName
+                                        )
+                                      }
+                                      className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                                      title="Download"
+                                    >
+                                      <Download className="w-4 h-4" />
+                                    </button>
+                                    {file.contentType === "application/pdf" && (
+                                      <button
+                                        onClick={() =>
+                                          handleViewPDF(file.fileKey)
+                                        }
+                                        className="p-1 text-gray-400 hover:text-green-600 rounded"
+                                        title="View PDF"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            {userUploadedFiles.length > 5 && (
+                              <div className="text-center pt-2">
+                                <button
+                                  onClick={() => setActiveTab("documents")}
+                                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                                >
+                                  View all {userUploadedFiles.length} documents
+                                  →
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {activeDocumentTab === "ai" && (
+                      <div>
+                        {isLoadingAnalysis ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                          </div>
+                        ) : aiAnalyses.length === 0 ? (
+                          <div className="text-center py-8">
+                            <Brain className="mx-auto h-8 w-8 text-gray-400" />
+                            <p className="text-sm text-gray-500 mt-2">
+                              No AI analysis reports
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {aiAnalyses.slice(0, 5).map((analysis, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg"
+                              >
+                                <Brain className="w-5 h-5 text-purple-600" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                    {analysis.fileName ||
+                                      analysis.originalName ||
+                                      "AI Analysis Report"}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {analysis.analysisType
+                                      ? analysis.analysisType
+                                          .replace(/_/g, " ")
+                                          .replace(/\b\w/g, (l) =>
+                                            l.toUpperCase()
+                                          )
+                                      : "Analysis Report"}
+                                  </p>
+                                  {analysis.createdAt && (
+                                    <p className="text-xs text-gray-400">
+                                      Generated {formatDate(analysis.createdAt)}
+                                    </p>
+                                  )}
+                                  {analysis.status && (
+                                    <p className="text-xs text-gray-500">
+                                      Status: {analysis.status}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  {analysis.fileKey && (
+                                    <button
+                                      onClick={() => {
+                                        if (analysis.fileKey) {
+                                          handleFileDownload(
+                                            analysis.fileKey,
+                                            analysis.fileName ||
+                                              "AI Analysis Report"
+                                          );
+                                        }
+                                      }}
+                                      className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                                      title="Download"
+                                    >
+                                      <Download className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                  {analysis.contentType === "application/pdf" &&
+                                    analysis.fileKey && (
+                                      <button
+                                        onClick={() => {
+                                          if (analysis.fileKey) {
+                                            handleViewPDF(analysis.fileKey);
+                                          }
+                                        }}
+                                        className="p-1 text-gray-400 hover:text-green-600 rounded"
+                                        title="View PDF"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                </div>
+                              </div>
+                            ))}
+                            {aiAnalyses.length > 5 && (
+                              <div className="text-center pt-2">
+                                <button
+                                  onClick={() => setActiveTab("documents")}
+                                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                                >
+                                  View all {aiAnalyses.length} reports →
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Contact Information */}
               <div className="mb-8">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">
@@ -1049,16 +1281,13 @@ const PatientDetails: React.FC = () => {
                       </span>
                     </div>
                     <div className="bg-red-50 rounded-lg p-3">
-                      {patient.medicalHistory?.allergies &&
-                      patient.medicalHistory.allergies.length > 0 ? (
+                      {patient.allergies && patient.allergies.length > 0 ? (
                         <ul className="space-y-1">
-                          {patient.medicalHistory.allergies.map(
-                            (allergy, index) => (
-                              <li key={index} className="text-sm text-red-700">
-                                • {allergy}
-                              </li>
-                            )
-                          )}
+                          {patient.allergies.map((allergy, index) => (
+                            <li key={index} className="text-sm text-red-700">
+                              • {allergy}
+                            </li>
+                          ))}
                         </ul>
                       ) : (
                         <p className="text-sm text-gray-500">
@@ -1077,16 +1306,13 @@ const PatientDetails: React.FC = () => {
                       </span>
                     </div>
                     <div className="bg-blue-50 rounded-lg p-3">
-                      {patient.medicalHistory?.medications &&
-                      patient.medicalHistory.medications.length > 0 ? (
+                      {patient.medications && patient.medications.length > 0 ? (
                         <ul className="space-y-1">
-                          {patient.medicalHistory.medications.map(
-                            (medication, index) => (
-                              <li key={index} className="text-sm text-blue-700">
-                                • {medication.name} - {medication.dosage}
-                              </li>
-                            )
-                          )}
+                          {patient.medications.map((medication, index) => (
+                            <li key={index} className="text-sm text-blue-700">
+                              • {medication.name} - {medication.dosage}
+                            </li>
+                          ))}
                         </ul>
                       ) : (
                         <p className="text-sm text-gray-500">
@@ -1105,22 +1331,20 @@ const PatientDetails: React.FC = () => {
                       </span>
                     </div>
                     <div className="bg-green-50 rounded-lg p-3">
-                      {patient.medicalHistory?.conditions &&
-                      patient.medicalHistory.conditions.length > 0 ? (
+                      {patient.medicalConditions &&
+                      Object.values(patient.medicalConditions).some(Boolean) ? (
                         <ul className="space-y-1">
-                          {patient.medicalHistory.conditions.map(
-                            (condition, index) => (
-                              <li
-                                key={index}
-                                className="text-sm text-green-700"
-                              >
-                                • {condition.name} (Diagnosed:{" "}
-                                {condition.diagnosedDate
-                                  ? formatDate(condition.diagnosedDate)
-                                  : "Unknown"}
-                                )
-                              </li>
-                            )
+                          {Object.entries(patient.medicalConditions).map(
+                            ([condition, hasCondition]) =>
+                              hasCondition && (
+                                <li
+                                  key={condition}
+                                  className="text-sm text-green-700"
+                                >
+                                  •{" "}
+                                  {condition.replace(/([A-Z])/g, " $1").trim()}
+                                </li>
+                              )
                           )}
                         </ul>
                       ) : (
@@ -1134,7 +1358,7 @@ const PatientDetails: React.FC = () => {
               </div>
 
               {/* Insurance Information */}
-              {patient.insurance && (
+              {patient.insuranceInfo && (
                 <div className="mb-8">
                   <h3 className="text-xl font-semibold text-gray-900 mb-4">
                     Insurance
@@ -1144,7 +1368,7 @@ const PatientDetails: React.FC = () => {
                       <div className="flex justify-between">
                         <span className="text-sm text-gray-600">Provider:</span>
                         <span className="text-sm font-medium">
-                          {patient.insurance.provider}
+                          {patient.insuranceInfo?.provider || "N/A"}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -1152,7 +1376,7 @@ const PatientDetails: React.FC = () => {
                           Policy Number:
                         </span>
                         <span className="text-sm font-medium">
-                          {patient.insurance.policyNumber}
+                          {patient.insuranceInfo?.policyNumber || "N/A"}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -1160,7 +1384,7 @@ const PatientDetails: React.FC = () => {
                           Group Number:
                         </span>
                         <span className="text-sm font-medium">
-                          {patient.insurance.groupNumber}
+                          {patient.insuranceInfo?.groupNumber || "N/A"}
                         </span>
                       </div>
                     </div>

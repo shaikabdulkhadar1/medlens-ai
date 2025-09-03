@@ -4,267 +4,190 @@ const patientSchema = new mongoose.Schema(
   {
     patientId: {
       type: String,
-      required: false, // Will be auto-generated if not provided
       unique: true,
-      trim: true,
-    },
-    mrn: {
-      type: String,
-      trim: true,
       sparse: true,
     },
     firstName: {
       type: String,
-      required: [true, "First name is required"],
-      trim: true,
-      maxlength: [50, "First name cannot exceed 50 characters"],
+      required: true,
     },
     lastName: {
       type: String,
-      required: [true, "Last name is required"],
-      trim: true,
-      maxlength: [50, "Last name cannot exceed 50 characters"],
+      required: true,
     },
     dateOfBirth: {
       type: Date,
-      required: [true, "Date of birth is required"],
+      required: true,
     },
     gender: {
       type: String,
-      required: [true, "Gender is required"],
       enum: ["male", "female", "other"],
+      required: true,
     },
+    bloodType: {
+      type: String,
+      enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
+    },
+    maritalStatus: {
+      type: String,
+      enum: ["single", "married", "divorced", "widowed", "separated"],
+    },
+    occupation: String,
     contactInfo: {
-      phone: {
-        type: String,
-        trim: true,
-      },
-      email: {
-        type: String,
-        lowercase: true,
-        trim: true,
-        match: [
-          /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-          "Please enter a valid email",
-        ],
-      },
+      phone: String,
+      email: String,
       address: {
-        street: {
-          type: String,
-          trim: true,
-        },
-        city: {
-          type: String,
-          trim: true,
-        },
-        state: {
-          type: String,
-          trim: true,
-        },
-        zipCode: {
-          type: String,
-          trim: true,
-        },
-        country: {
-          type: String,
-          trim: true,
-          default: "USA",
-        },
+        street: String,
+        city: String,
+        state: String,
+        zipCode: String,
+        country: String,
       },
-    },
-    medicalHistory: {
-      allergies: [
-        {
-          type: String,
-          trim: true,
-        },
-      ],
-      medications: [
-        {
-          name: String,
-          dosage: String,
-          frequency: String,
-          startDate: Date,
-          endDate: Date,
-        },
-      ],
-      conditions: [
-        {
-          name: String,
-          diagnosedDate: Date,
-          status: {
-            type: String,
-            enum: ["active", "resolved", "chronic"],
-            default: "active",
-          },
-        },
-      ],
-      surgeries: [
-        {
-          procedure: String,
-          date: Date,
-          hospital: String,
-          surgeon: String,
-        },
-      ],
-    },
-    insurance: {
-      provider: {
-        type: String,
-        trim: true,
-      },
-      policyNumber: {
-        type: String,
-        trim: true,
-      },
-      groupNumber: {
-        type: String,
-        trim: true,
-      },
-      effectiveDate: Date,
-      expiryDate: Date,
     },
     emergencyContact: {
-      name: {
+      name: String,
+      relationship: String,
+      phone: String,
+      email: String,
+    },
+    insuranceInfo: {
+      provider: String,
+      policyNumber: String,
+      groupNumber: String,
+      effectiveDate: Date,
+      expiryDate: Date,
+      coverageType: {
         type: String,
-        trim: true,
+        enum: ["individual", "family", "group", "medicare", "medicaid"],
       },
-      relationship: {
-        type: String,
-        trim: true,
-      },
-      phone: {
-        type: String,
-        trim: true,
-      },
-      email: {
-        type: String,
-        lowercase: true,
-        trim: true,
-      },
+      deductible: String,
+      copay: String,
     },
     vitalSigns: {
-      height: {
-        value: Number,
-        unit: {
+      bloodPressure: String,
+      heartRate: String,
+      temperature: String,
+      weight: String,
+      height: String,
+      bmi: String,
+      oxygenSaturation: String,
+      respiratoryRate: String,
+    },
+    medicalConditions: {
+      diabetes: { type: Boolean, default: false },
+      hypertension: { type: Boolean, default: false },
+      heartDisease: { type: Boolean, default: false },
+      asthma: { type: Boolean, default: false },
+      cancer: { type: Boolean, default: false },
+      kidneyDisease: { type: Boolean, default: false },
+      liverDisease: { type: Boolean, default: false },
+      thyroidDisorder: { type: Boolean, default: false },
+    },
+    allergies: [String],
+    medications: [
+      {
+        name: { type: String, required: true },
+        dosage: { type: String, required: true },
+        frequency: { type: String, required: true },
+        startDate: { type: Date, required: true },
+        endDate: Date,
+        prescribedBy: String,
+        notes: String,
+      },
+    ],
+    surgicalHistory: [
+      {
+        procedure: { type: String, required: true },
+        date: { type: Date, required: true },
+        hospital: { type: String, required: true },
+        surgeon: { type: String, required: true },
+        notes: String,
+      },
+    ],
+    familyHistory: [
+      {
+        condition: { type: String, required: true },
+        relationship: { type: String, required: true },
+        ageOfOnset: String,
+        notes: String,
+      },
+    ],
+    lifestyleInfo: {
+      smokingStatus: String,
+      alcoholConsumption: String,
+      exerciseFrequency: String,
+      dietRestrictions: [String],
+      stressLevel: String,
+    },
+    frontDeskNotes: {
+      initialDiagnosis: String,
+      symptoms: [String],
+      observations: String,
+      chiefComplaint: String,
+      presentIllness: String,
+    },
+    uploadedDocuments: [
+      {
+        fileName: { type: String, required: true },
+        fileType: { type: String, required: true },
+        size: { type: Number, required: true },
+        uploadDate: { type: Date, default: Date.now },
+        category: { type: String, required: true },
+        url: String,
+      },
+    ],
+    aiAnalysisReports: [
+      {
+        reportType: { type: String, required: true },
+        status: {
           type: String,
-          enum: ["cm", "inches"],
-          default: "cm",
+          enum: ["completed", "processing", "failed"],
+          default: "processing",
         },
+        analysisDate: { type: Date, default: Date.now },
+        summary: String,
+        findings: String,
+        recommendations: String,
+        modelUsed: String,
+        confidence: Number,
       },
-      weight: {
-        value: Number,
-        unit: {
-          type: String,
-          enum: ["kg", "lbs"],
-          default: "kg",
-        },
+    ],
+    labResults: [
+      {
+        testName: { type: String, required: true },
+        testDate: { type: Date, required: true },
+        result: { type: String, required: true },
+        normalRange: { type: String, required: true },
+        unit: { type: String, required: true },
+        status: { type: String, required: true },
+        notes: String,
       },
-      bloodPressure: {
-        systolic: Number,
-        diastolic: Number,
-      },
-      heartRate: Number,
-      temperature: Number,
-      lastUpdated: Date,
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    lastVisited: {
-      type: Date,
-      default: Date.now,
-    },
-    notes: {
-      type: String,
-      maxlength: [1000, "Notes cannot exceed 1000 characters"],
-    },
+    ],
     assignedDoctor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      // Not required initially - can be assigned later by junior doctor
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Creator is required"],
     },
     status: {
       type: String,
-      enum: ["active", "case_closed"],
+      enum: ["active", "inactive", "discharged"],
       default: "active",
     },
-    frontDeskNotes: {
-      initialDiagnosis: {
-        type: String,
-        maxlength: [500, "Initial diagnosis cannot exceed 500 characters"],
-      },
-      symptoms: [
-        {
-          type: String,
-          trim: true,
-          maxlength: [200, "Symptom cannot exceed 200 characters"],
-        },
-      ],
-      observations: {
-        type: String,
-        maxlength: [1000, "Observations cannot exceed 1000 characters"],
-      },
-      createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
-      createdAt: {
-        type: Date,
-        default: Date.now,
-      },
-      updatedAt: {
-        type: Date,
-      },
-      updatedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-      },
+    nextAppointment: Date,
+    notes: String,
+    lastVisited: Date,
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
   }
 );
-
-// Virtual for full name
-patientSchema.virtual("fullName").get(function () {
-  return `${this.firstName} ${this.lastName}`;
-});
-
-// Virtual for age
-patientSchema.virtual("age").get(function () {
-  if (!this.dateOfBirth) return null;
-  const today = new Date();
-  const birthDate = new Date(this.dateOfBirth);
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-
-  if (
-    monthDiff < 0 ||
-    (monthDiff === 0 && today.getDate() < birthDate.getDate())
-  ) {
-    age--;
-  }
-
-  return age;
-});
-
-// Indexes
-patientSchema.index({ patientId: 1 }, { unique: true });
-patientSchema.index({ mrn: 1 });
-patientSchema.index({ lastName: 1, firstName: 1 });
-patientSchema.index({ dateOfBirth: 1 });
-patientSchema.index({ isActive: 1 });
-patientSchema.index({ assignedDoctor: 1 });
 
 // Pre-save middleware to generate patient ID if not provided
 patientSchema.pre("save", function (next) {
@@ -275,5 +198,11 @@ patientSchema.pre("save", function (next) {
   }
   next();
 });
+
+// Index for better query performance
+patientSchema.index({ patientId: 1 });
+patientSchema.index({ assignedDoctor: 1 });
+patientSchema.index({ status: 1 });
+patientSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("Patient", patientSchema);

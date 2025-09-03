@@ -125,6 +125,7 @@ app.use(
   "/api/front-desk-coordinator",
   require("./routes/frontDeskCoordinator")
 );
+app.use("/api/patients", require("./routes/patients"));
 
 // Get all users endpoint (legacy - will be replaced by auth routes)
 app.get("/api/users", async (req, res) => {

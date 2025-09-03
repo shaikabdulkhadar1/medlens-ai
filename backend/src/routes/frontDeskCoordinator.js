@@ -16,6 +16,12 @@ router.post(
   requireFrontDeskCoordinator,
   async (req, res) => {
     try {
+      console.log("🔍 Patient creation request received:", {
+        body: req.body,
+        user: req.user._id,
+        timestamp: new Date().toISOString(),
+      });
+
       const {
         patientId,
         firstName,
@@ -33,8 +39,26 @@ router.post(
 
       const frontDeskCoordinatorId = req.user._id;
 
+      console.log("📋 Extracted data:", {
+        firstName,
+        lastName,
+        dateOfBirth,
+        gender,
+        hasContactInfo: !!contactInfo,
+        hasEmergencyContact: !!emergencyContact,
+        initialDiagnosis,
+        symptoms,
+        assignedSeniorDoctorId,
+      });
+
       // Validate required fields
       if (!firstName || !lastName || !dateOfBirth || !gender) {
+        console.log("❌ Required fields validation failed:", {
+          firstName,
+          lastName,
+          dateOfBirth,
+          gender,
+        });
         return res.status(400).json({
           success: false,
           message:
@@ -42,13 +66,32 @@ router.post(
         });
       }
 
+      console.log("✅ Required fields validation passed");
+
+      // Convert dateOfBirth to Date object if it's a string
+      let parsedDateOfBirth = dateOfBirth;
+      if (typeof dateOfBirth === "string") {
+        parsedDateOfBirth = new Date(dateOfBirth);
+        if (isNaN(parsedDateOfBirth.getTime())) {
+          console.log("❌ Date parsing failed for:", dateOfBirth);
+          return res.status(400).json({
+            success: false,
+            message: "Invalid date of birth format",
+          });
+        }
+        console.log("✅ Date parsed successfully:", parsedDateOfBirth);
+      }
+
       // Validate contact information
       if (!contactInfo?.phone || !contactInfo?.email) {
+        console.log("❌ Contact info validation failed:", contactInfo);
         return res.status(400).json({
           success: false,
           message: "Phone and email are required",
         });
       }
+
+      console.log("✅ Contact info validation passed");
 
       // Validate address
       if (
@@ -58,12 +101,15 @@ router.post(
         !contactInfo?.address?.zipCode ||
         !contactInfo?.address?.country
       ) {
+        console.log("❌ Address validation failed:", contactInfo?.address);
         return res.status(400).json({
           success: false,
           message:
             "Complete address (street, city, state, zip code, country) is required",
         });
       }
+
+      console.log("✅ Address validation passed");
 
       // Validate emergency contact
       if (
@@ -72,6 +118,10 @@ router.post(
         !emergencyContact?.phone ||
         !emergencyContact?.email
       ) {
+        console.log(
+          "❌ Emergency contact validation failed:",
+          emergencyContact
+        );
         return res.status(400).json({
           success: false,
           message:
@@ -79,12 +129,12 @@ router.post(
         });
       }
 
+      console.log("✅ Emergency contact validation passed");
+
       // Validate medical information
       if (!symptoms || symptoms.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "At least one symptom is required",
-        });
+        // Make symptoms optional, provide default if empty
+        req.body.symptoms = req.body.symptoms || ["General consultation"];
       }
 
       if (!initialDiagnosis) {
@@ -94,29 +144,24 @@ router.post(
         });
       }
 
-      // Validate vitals
-      if (
-        !req.body.vitalSigns?.bloodPressure ||
-        !req.body.vitalSigns?.heartRate ||
-        !req.body.vitalSigns?.temperature ||
-        !req.body.vitalSigns?.weight ||
-        !req.body.vitalSigns?.height ||
-        !req.body.vitalSigns?.bmi
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "All vital signs (BP, heart rate, temperature, weight, height, BMI) are required",
-        });
+      // Validate vitals - make them optional but validate format if provided
+      if (req.body.vitalSigns) {
+        // Only validate if vitals are provided, but don't require all fields
+        const vitals = req.body.vitalSigns;
+        if (vitals.weight && vitals.height && !vitals.bmi) {
+          // Auto-calculate BMI if weight and height are provided
+          const weight = parseFloat(vitals.weight);
+          const height = parseFloat(vitals.height) / 100; // Convert cm to meters
+          if (weight && height && height > 0) {
+            req.body.vitalSigns.bmi = (weight / (height * height)).toFixed(1);
+          }
+        }
       }
 
-      // Validate allergies
-      if (!req.body.allergies || req.body.allergies.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "At least one allergy is required (or mark as 'None' if no allergies)",
-        });
+      // Validate allergies - make them optional
+      // If no allergies are provided, set to empty array
+      if (!req.body.allergies) {
+        req.body.allergies = [];
       }
 
       // Validate senior doctor assignment if provided
@@ -126,46 +171,96 @@ router.post(
           role: "senior_doctor",
         });
         if (!seniorDoctor) {
-          return res.status(400).json({
-            success: false,
-            message: "Invalid senior doctor ID",
-          });
+          console.log(
+            "❌ Senior doctor validation failed for ID:",
+            assignedSeniorDoctorId
+          );
+          console.log(
+            "📝 Making doctor assignment optional - patient will be created without assignment"
+          );
+          // Don't return error, just set assignedSeniorDoctorId to null
+          req.body.assignedSeniorDoctorId = null;
+        } else {
+          console.log("✅ Senior doctor validation passed");
         }
+      } else {
+        console.log("📋 No senior doctor assigned");
       }
 
       // Create new patient
       const patient = new Patient({
         firstName,
         lastName,
-        dateOfBirth,
+        dateOfBirth: parsedDateOfBirth,
         gender,
         contactInfo,
         emergencyContact,
         vitalSigns: req.body.vitalSigns,
-        medicalHistory: {
-          allergies: req.body.allergies || [],
-          conditions: req.body.medicalConditions
-            ? Object.entries(req.body.medicalConditions)
-                .filter(([_, value]) => value === true)
-                .map(([key, _]) => ({ name: key, status: "active" }))
-            : [],
+        medicalConditions: {
+          diabetes: false,
+          hypertension: false,
+          heartDisease: false,
+          asthma: false,
+          cancer: false,
+          kidneyDisease: false,
+          liverDisease: false,
+          thyroidDisorder: false,
+          ...req.body.medicalConditions, // Merge with provided values
+        },
+        allergies: req.body.allergies || [],
+        medications: req.body.medications || [],
+        surgicalHistory: req.body.surgicalHistory || [],
+        familyHistory: req.body.familyHistory || [],
+        lifestyleInfo: {
+          smokingStatus: "non-smoker",
+          alcoholConsumption: "none",
+          exerciseFrequency: "not specified",
+          dietRestrictions: [],
+          stressLevel: "not specified",
+          ...req.body.lifestyleInfo, // Merge with provided values
         },
         createdBy: frontDeskCoordinatorId,
         assignedDoctor: assignedSeniorDoctorId || null,
         status: "active",
+        isActive: true,
         // Add front desk coordinator specific fields
         frontDeskNotes: {
+          chiefComplaint: initialDiagnosis || "",
+          presentIllness: symptoms ? symptoms.join(", ") : "",
           initialDiagnosis: initialDiagnosis || "",
           symptoms: symptoms || [],
+          observations: req.body.observations || "",
           createdBy: frontDeskCoordinatorId,
           createdAt: new Date(),
         },
+        uploadedDocuments: [],
+        aiAnalysisReports: [],
+        labResults: [],
+        nextAppointment: null,
+        notes: req.body.notes || "",
+        lastVisited: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      console.log("📝 Patient object created, attempting to save...");
+      console.log("🔍 Patient data structure:", {
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        dateOfBirth: patient.dateOfBirth,
+        gender: patient.gender,
+        hasContactInfo: !!patient.contactInfo,
+        hasEmergencyContact: !!patient.emergencyContact,
+        hasVitalSigns: !!patient.vitalSigns,
+        hasMedicalConditions: !!patient.medicalConditions,
+        allergiesCount: patient.allergies?.length,
+        hasFrontDeskNotes: !!patient.frontDeskNotes,
       });
 
       await patient.save();
 
       console.log(
-        `✅ Patient created by front desk coordinator ${frontDeskCoordinatorId}: ${patientId}`
+        `✅ Patient created successfully by front desk coordinator ${frontDeskCoordinatorId}: ${patient.patientId}`
       );
 
       res.status(201).json({

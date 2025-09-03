@@ -383,4 +383,76 @@ export const frontDeskCoordinatorAPI = {
   },
 };
 
+// Patient Management API
+export const patientAPI = {
+  // Get all patients with pagination and filtering
+  getPatients: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    assignedDoctor?: string;
+  }) => {
+    const response = await api.get("/patients", { params });
+    return response.data;
+  },
+
+  // Get single patient by ID
+  getPatient: async (id: string) => {
+    const response = await api.get(`/patients/${id}`);
+    return response.data;
+  },
+
+  // Create new patient
+  createPatient: async (patientData: any) => {
+    const response = await api.post("/patients", patientData);
+    return response.data;
+  },
+
+  // Update patient
+  updatePatient: async (id: string, patientData: any) => {
+    const response = await api.put(`/patients/${id}`, patientData);
+    return response.data;
+  },
+
+  // Delete patient
+  deletePatient: async (id: string) => {
+    const response = await api.delete(`/patients/${id}`);
+    return response.data;
+  },
+
+  // Add document to patient
+  addDocument: async (patientId: string, documentData: any) => {
+    const response = await api.post(
+      `/patients/${patientId}/documents`,
+      documentData
+    );
+    return response.data;
+  },
+
+  // Add AI analysis report to patient
+  addAIReport: async (patientId: string, reportData: any) => {
+    const response = await api.post(
+      `/patients/${patientId}/ai-reports`,
+      reportData
+    );
+    return response.data;
+  },
+
+  // Add lab result to patient
+  addLabResult: async (patientId: string, labData: any) => {
+    const response = await api.post(
+      `/patients/${patientId}/lab-results`,
+      labData
+    );
+    return response.data;
+  },
+
+  // Get patient statistics
+  getPatientStats: async () => {
+    const response = await api.get("/patients/stats/overview");
+    return response.data;
+  },
+};
+
 export default api;

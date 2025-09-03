@@ -7,7 +7,8 @@ export interface User {
     | "admin"
     | "senior_doctor"
     | "consulting_doctor"
-    | "front-desk-coordinator";
+    | "front-desk-coordinator"
+    | "jr-doctor";
   specialization?: string;
   licenseNumber?: string;
   hospital?: string;
@@ -225,6 +226,9 @@ export interface AIAnalysis {
   updatedAt: string;
   formattedProcessingTime?: string;
   statusBadge?: string;
+  // Additional properties from backend response
+  fileKey?: string;
+  originalName?: string;
 }
 
 export interface AuthContextType {
@@ -244,6 +248,9 @@ export interface Patient {
   lastName: string;
   dateOfBirth: string;
   gender: "male" | "female" | "other";
+  bloodType?: string;
+  maritalStatus?: string;
+  occupation?: string;
   contactInfo?: {
     phone?: string;
     email?: string;
@@ -261,51 +268,104 @@ export interface Patient {
     phone?: string;
     email?: string;
   };
-  medicalHistory?: {
-    allergies?: string[];
-    medications?: Array<{
-      name: string;
-      dosage?: string;
-      frequency?: string;
-      startDate?: string;
-      endDate?: string;
-    }>;
-    conditions?: Array<{
-      name: string;
-      diagnosedDate?: string;
-      status?: "active" | "resolved" | "chronic";
-    }>;
-    surgeries?: Array<{
-      procedure: string;
-      date?: string;
-      hospital?: string;
-      surgeon?: string;
-    }>;
-  };
-  insurance?: {
+  insuranceInfo?: {
     provider?: string;
     policyNumber?: string;
     groupNumber?: string;
+    coverageType?: string;
     effectiveDate?: string;
     expiryDate?: string;
+    deductible?: string;
+    copay?: string;
   };
   vitalSigns?: {
-    height?: {
-      value?: number;
-      unit?: "cm" | "inches";
-    };
-    weight?: {
-      value?: number;
-      unit?: "kg" | "lbs";
-    };
-    bloodPressure?: {
-      systolic?: number;
-      diastolic?: number;
-    };
-    heartRate?: number;
-    temperature?: number;
-    lastUpdated?: string;
+    bloodPressure?: string;
+    heartRate?: string;
+    temperature?: string;
+    weight?: string;
+    height?: string;
+    bmi?: string;
+    oxygenSaturation?: string;
+    respiratoryRate?: string;
   };
+  medicalConditions?: {
+    diabetes?: boolean;
+    hypertension?: boolean;
+    heartDisease?: boolean;
+    asthma?: boolean;
+    cancer?: boolean;
+    kidneyDisease?: boolean;
+    liverDisease?: boolean;
+    thyroidDisorder?: boolean;
+  };
+  medications?: Array<{
+    name: string;
+    dosage: string;
+    frequency: string;
+    startDate: string;
+    endDate?: string;
+    prescribedBy?: string;
+    notes?: string;
+  }>;
+  surgicalHistory?: Array<{
+    procedure: string;
+    date: string;
+    hospital: string;
+    surgeon: string;
+    notes?: string;
+  }>;
+  familyHistory?: Array<{
+    condition: string;
+    relationship: string;
+    ageOfOnset?: string;
+    notes?: string;
+  }>;
+  lifestyleInfo?: {
+    smokingStatus?: string;
+    alcoholConsumption?: string;
+    exerciseFrequency?: string;
+    diet?: string;
+    occupation?: string;
+  };
+  allergies?: string[];
+  frontDeskNotes?: {
+    chiefComplaint?: string;
+    presentIllness?: string;
+    initialDiagnosis?: string;
+    symptoms?: string[];
+    observations?: string;
+    createdBy?: string | User;
+    createdAt?: string;
+    updatedAt?: string;
+    updatedBy?: string | User;
+  };
+  uploadedDocuments?: Array<{
+    fileName: string;
+    fileType: string;
+    size: number;
+    uploadDate: string;
+    category: string;
+    url?: string;
+  }>;
+  aiAnalysisReports?: Array<{
+    reportType: string;
+    status: "completed" | "processing" | "failed";
+    analysisDate: string;
+    summary?: string;
+    findings?: string;
+    recommendations?: string;
+    modelUsed?: string;
+    confidence?: number;
+  }>;
+  labResults?: Array<{
+    testName: string;
+    testDate: string;
+    result: string;
+    normalRange: string;
+    unit: string;
+    status: string;
+    notes?: string;
+  }>;
   assignedDoctor?: string | User;
   createdBy?: string | User;
   status?:
@@ -315,17 +375,9 @@ export interface Patient {
     | "discharged"
     | "archived";
   isActive: boolean;
-  lastVisited?: string;
+  nextAppointment?: string;
   notes?: string;
-  frontDeskNotes?: {
-    initialDiagnosis?: string;
-    symptoms?: string[];
-    observations?: string;
-    createdBy?: string | User;
-    createdAt?: string;
-    updatedAt?: string;
-    updatedBy?: string | User;
-  };
+  lastVisited?: string;
   createdAt: string;
   updatedAt: string;
   fullName?: string;

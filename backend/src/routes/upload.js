@@ -8,6 +8,7 @@ const { authenticateToken, requireAnyDoctor } = require("../middleware/auth");
 const { UploadRecord, Patient, AIAnalysis, User } = require("../db");
 const AIService = require("../ai-services/aiService");
 const PDFService = require("../services/pdfService");
+const mongoose = require("mongoose");
 
 const router = express.Router();
 
@@ -679,17 +680,87 @@ router.delete(
   }
 );
 
-// List files for a patient
+// Get all files for a specific patient
+router.get("/patient/:patientId/files", authenticateToken, async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const { userId } = req.user;
+
+    // Validate patientId
+    if (!patientId || !mongoose.Types.ObjectId.isValid(patientId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid patient ID",
+      });
+    }
+
+    // Check if patient exists
+    const patient = await Patient.findById(patientId);
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: "Patient not found",
+      });
+    }
+
+    // Get all upload records for this patient
+    const uploadRecords = await UploadRecord.find({
+      patientId: patientId,
+      status: "completed", // Only get completed uploads
+    })
+      .populate("uploadedBy", "firstName lastName email")
+      .sort({ createdAt: -1 }); // Most recent first
+
+    // Transform the data to match frontend expectations
+    const files = uploadRecords.map((record) => ({
+      _id: record._id,
+      fileKey: record.fileKey,
+      originalName: record.originalName,
+      documentType: record.documentType,
+      fileSize: record.fileSize,
+      contentType: record.contentType,
+      status: record.status,
+      createdAt: record.createdAt,
+      completedAt: record.completedAt,
+      uploadedBy: record.uploadedBy,
+      patientId: record.patientId,
+      uploadId: record.uploadId,
+      metadata: record.metadata,
+    }));
+
+    res.json({
+      success: true,
+      data: files,
+      message: `Found ${files.length} files for patient`,
+    });
+  } catch (error) {
+    console.error("Error fetching patient files:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch patient files",
+      error: error.message,
+    });
+  }
+});
+
+// Get all AI analysis reports for a specific patient
 router.get(
-  "/patient/:patientId/files",
+  "/patient/:patientId/analysis",
   authenticateToken,
-  requireAnyDoctor,
   async (req, res) => {
     try {
       const { patientId } = req.params;
-      const userId = req.user._id;
+      const { userId } = req.user;
 
-      // Validate patient exists
+      // Validate patientId
+      if (!patientId || !mongoose.Types.ObjectId.isValid(patientId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid patient ID",
+        });
+      }
+
+      // Check if patient exists
       const patient = await Patient.findById(patientId);
       if (!patient) {
         return res.status(404).json({
@@ -698,41 +769,60 @@ router.get(
         });
       }
 
-      // Fetch upload records from database for this patient
-      const uploadRecords = await UploadRecord.find({
+      // Get all AI analysis records for this patient
+      const aiAnalyses = await AIAnalysis.find({
         patientId: patientId,
-        status: "completed", // Only show completed uploads
       })
-        .populate("uploadedBy", "firstName lastName email")
+        .populate("documentId", "originalName fileKey contentType")
+        .populate("processedBy", "firstName lastName email")
         .sort({ createdAt: -1 }); // Most recent first
 
-      // Transform the data for frontend consumption
-      const files = uploadRecords.map((record) => ({
-        _id: record._id,
-        fileKey: record.fileKey,
-        key: record.fileKey, // For backward compatibility
-        originalName: record.originalName,
-        fileName: record.originalName, // For backward compatibility
-        fileSize: record.fileSize,
-        contentType: record.contentType,
-        documentType: record.documentType,
-        status: record.status,
-        createdAt: record.createdAt,
-        completedAt: record.completedAt,
-        uploadedBy: record.uploadedBy,
-        metadata: record.metadata,
+      // Transform the data to match frontend expectations
+      const analysisReports = aiAnalyses.map((analysis) => ({
+        _id: analysis._id,
+        patientId: analysis.patientId,
+        documentId: analysis.documentId,
+        analysisId: analysis.analysisId,
+        fileName: analysis.fileName,
+        analysisType: analysis.analysisType,
+        documentType: analysis.documentType,
+        contentType: analysis.contentType,
+        analysisResult: analysis.analysisResult,
+        status: analysis.status,
+        errorMessage: analysis.errorMessage,
+        processedBy: analysis.processedBy,
+        metadata: analysis.metadata,
+        isActive: analysis.isActive,
+        createdAt: analysis.createdAt,
+        updatedAt: analysis.updatedAt,
+        // Add file information from the related document
+        fileKey: analysis.documentId?.fileKey,
+        originalName: analysis.documentId?.originalName || analysis.fileName,
+        // Format processing time if available
+        formattedProcessingTime: analysis.analysisResult?.processingTime
+          ? `${Math.round(analysis.analysisResult.processingTime / 1000)}s`
+          : undefined,
+        // Add status badge
+        statusBadge:
+          analysis.status === "completed"
+            ? "Completed"
+            : analysis.status === "processing"
+            ? "Processing"
+            : analysis.status === "failed"
+            ? "Failed"
+            : "Pending",
       }));
 
       res.json({
         success: true,
-        data: files,
-        message: `Found ${files.length} documents for patient`,
+        data: analysisReports,
+        message: `Found ${analysisReports.length} AI analysis reports for patient`,
       });
     } catch (error) {
-      console.error("Error listing patient files:", error);
+      console.error("Error fetching patient AI analysis:", error);
       res.status(500).json({
         success: false,
-        message: "Error listing patient files",
+        message: "Failed to fetch patient AI analysis",
         error: error.message,
       });
     }

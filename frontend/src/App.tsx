@@ -10,6 +10,8 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ConsultingDoctorDashboard from "./pages/ConsultingDoctorDashboard";
 import FrontDeskCoordinatorDashboard from "./pages/FrontDeskCoordinatorDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
+import AdminPatientDetails from "./pages/AdminPatientDetails";
 import PatientDetails from "./pages/PatientDetails";
 
 // Protected Route Component
@@ -62,11 +64,12 @@ const RoleBasedDashboard: React.FC = () => {
 
   // Route to appropriate dashboard based on user role
   switch (user.role) {
+    case "admin":
+      return <AdminDashboard />;
     case "consulting_doctor":
       return <ConsultingDoctorDashboard />;
     case "front-desk-coordinator":
       return <FrontDeskCoordinatorDashboard />;
-    case "admin":
     case "senior_doctor":
     default:
       return <Dashboard />;
@@ -97,6 +100,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <PatientDetails />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/patient/:patientId"
+        element={
+          <ProtectedRoute>
+            <AdminPatientDetails />
           </ProtectedRoute>
         }
       />
