@@ -53,7 +53,59 @@ const AdminDashboard: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState("all");
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
   const [showUserDetailsModal, setShowUserDetailsModal] = useState(false);
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editFormData, setEditFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    role: "",
+    isActive: true,
+    phone: "",
+    address: {
+      street: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      country: "",
+    },
+    specialization: "",
+    licenseNumber: "",
+    startedWorking: "",
+    lastLogin: "",
+    documents: {
+      idDocument: "",
+      licenseDocument: "",
+      otherDocuments: [],
+    },
+    assignedPatients: [],
+  });
+  const [createFormData, setCreateFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    role: "",
+    phone: "",
+    address: {
+      street: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      country: "",
+    },
+    specialization: "",
+    licenseNumber: "",
+    hospital: "",
+    department: "",
+    startedWorking: "",
+    documents: {
+      idDocument: "",
+      licenseDocument: "",
+      otherDocuments: [],
+    },
+  });
   const [activeTab, setActiveTab] = useState<"overview" | "users" | "patients">(
     "overview"
   );
@@ -316,6 +368,34 @@ const AdminDashboard: React.FC = () => {
     if (action === "view") {
       setSelectedUser(user);
       setShowUserDetailsModal(true);
+    } else if (action === "edit") {
+      setEditingUser(user);
+      setEditFormData({
+        firstName: user.firstName || "",
+        lastName: user.lastName || "",
+        email: user.email || "",
+        role: user.role || "",
+        isActive: user.isActive !== undefined ? user.isActive : true,
+        phone: user.phone || "",
+        address: {
+          street: user.address?.street || "",
+          city: user.address?.city || "",
+          state: user.address?.state || "",
+          zipCode: user.address?.zipCode || "",
+          country: user.address?.country || "",
+        },
+        specialization: user.specialization || "",
+        licenseNumber: user.licenseNumber || "",
+        startedWorking: user.startedWorking || "",
+        lastLogin: user.lastLogin || "",
+        documents: {
+          idDocument: user.documents?.idDocument || "",
+          licenseDocument: user.documents?.licenseDocument || "",
+          otherDocuments: user.documents?.otherDocuments || [],
+        },
+        assignedPatients: user.assignedPatients || [],
+      });
+      setShowEditUserModal(true);
     }
   };
 
@@ -330,6 +410,221 @@ const AdminDashboard: React.FC = () => {
     } catch (error) {
       console.error("Failed to toggle user status:", error);
     }
+  };
+
+  const handleEditFormChange = (field: string, value: any) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleNestedFormChange = (
+    parentField: string,
+    childField: string,
+    value: any
+  ) => {
+    setEditFormData((prev) => ({
+      ...prev,
+      [parentField]: {
+        ...(prev[parentField as keyof typeof prev] as any),
+        [childField]: value,
+      },
+    }));
+  };
+
+  const handleSaveUserEdit = async () => {
+    if (!editingUser) return;
+
+    try {
+      // In real app, call API to update user
+      const updatedUser = {
+        ...editingUser,
+        ...editFormData,
+        fullName: `${editFormData.firstName} ${editFormData.lastName}`,
+      };
+
+      setUsers(users.map((u) => (u._id === editingUser._id ? updatedUser : u)));
+
+      // Close modal and reset state
+      setShowEditUserModal(false);
+      setEditingUser(null);
+      setEditFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        role: "",
+        isActive: true,
+        phone: "",
+        address: {
+          street: "",
+          city: "",
+          state: "",
+          zipCode: "",
+          country: "",
+        },
+        specialization: "",
+        licenseNumber: "",
+        startedWorking: "",
+        lastLogin: "",
+        documents: {
+          idDocument: "",
+          licenseDocument: "",
+          otherDocuments: [],
+        },
+        assignedPatients: [],
+      });
+
+      // Show success message
+      alert("User updated successfully!");
+    } catch (error) {
+      console.error("Failed to update user:", error);
+      alert("Failed to update user. Please try again.");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setShowEditUserModal(false);
+    setEditingUser(null);
+    setEditFormData({
+      firstName: "",
+      lastName: "",
+      email: "",
+      role: "",
+      isActive: true,
+      phone: "",
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        country: "",
+      },
+      specialization: "",
+      licenseNumber: "",
+      startedWorking: "",
+      lastLogin: "",
+      documents: {
+        idDocument: "",
+        licenseDocument: "",
+        otherDocuments: [],
+      },
+      assignedPatients: [],
+    });
+  };
+
+  const handleCreateFormChange = (field: string, value: any) => {
+    setCreateFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleCreateNestedFormChange = (
+    parentField: string,
+    childField: string,
+    value: any
+  ) => {
+    setCreateFormData((prev) => ({
+      ...prev,
+      [parentField]: {
+        ...(prev[parentField as keyof typeof prev] as any),
+        [childField]: value,
+      },
+    }));
+  };
+
+  const handleCreateUser = async () => {
+    try {
+      // Validate required fields
+      if (
+        !createFormData.firstName ||
+        !createFormData.lastName ||
+        !createFormData.email ||
+        !createFormData.password ||
+        !createFormData.role
+      ) {
+        alert(
+          "Please fill in all required fields (First Name, Last Name, Email, Password, Role)"
+        );
+        return;
+      }
+
+      // In real app, call API to create user
+      const newUser = {
+        ...createFormData,
+        fullName: `${createFormData.firstName} ${createFormData.lastName}`,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Add to users list (in real app, this would come from API response)
+      setUsers((prev) => [...prev, newUser]);
+
+      // Close modal and reset form
+      setShowCreateUserModal(false);
+      setCreateFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        password: "",
+        role: "",
+        phone: "",
+        address: {
+          street: "",
+          city: "",
+          state: "",
+          zipCode: "",
+          country: "",
+        },
+        specialization: "",
+        licenseNumber: "",
+        hospital: "",
+        department: "",
+        startedWorking: "",
+        documents: {
+          idDocument: "",
+          licenseDocument: "",
+          otherDocuments: [],
+        },
+      });
+
+      // Show success message
+      alert("User created successfully!");
+    } catch (error) {
+      console.error("Failed to create user:", error);
+      alert("Failed to create user. Please try again.");
+    }
+  };
+
+  const handleCancelCreate = () => {
+    setShowCreateUserModal(false);
+    setCreateFormData({
+      firstName: "",
+      lastName: "",
+      email: "",
+      password: "",
+      role: "",
+      phone: "",
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        country: "",
+      },
+      specialization: "",
+      licenseNumber: "",
+      hospital: "",
+      department: "",
+      startedWorking: "",
+      documents: {
+        idDocument: "",
+        licenseDocument: "",
+        otherDocuments: [],
+      },
+    });
   };
 
   if (!user) {
@@ -608,7 +903,14 @@ const AdminDashboard: React.FC = () => {
                     Manage all system users and their permissions
                   </p>
                 </div>
-                <div className="mt-4 sm:mt-0">
+                <div className="mt-4 sm:mt-0 flex space-x-3">
+                  <button
+                    onClick={loadUsers}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh Users
+                  </button>
                   <button
                     onClick={() => setShowCreateUserModal(true)}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
@@ -1019,69 +1321,312 @@ const AdminDashboard: React.FC = () => {
       {/* User Details Modal */}
       {showUserDetailsModal && selectedUser && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-5 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
             <div className="mt-3">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-medium text-gray-900">
-                  User Details
+                  User Details - {selectedUser.fullName}
                 </h3>
                 <button
                   onClick={() => setShowUserDetailsModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
                 >
                   ×
                 </button>
               </div>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">
-                    Name:
-                  </label>
-                  <p className="text-sm text-gray-900">
-                    {selectedUser.fullName}
-                  </p>
+
+              <div className="max-h-96 overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Basic Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      Basic Information
+                    </h4>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Name:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.fullName}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Email:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.email}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Phone:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.phone || "Not provided"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Role:
+                      </label>
+                      <div className="mt-1">
+                        {getRoleBadge(selectedUser.role)}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Status:
+                      </label>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2 ${
+                          selectedUser.isActive
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {selectedUser.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Professional Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      Professional Information
+                    </h4>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Specialization:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.specialization || "Not specified"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        License Number:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.licenseNumber || "Not provided"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Hospital:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.hospital || "Not specified"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Department:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.department || "Not specified"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Started Working:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.startedWorking
+                          ? new Date(
+                              selectedUser.startedWorking
+                            ).toLocaleDateString()
+                          : "Not specified"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Last Login:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.lastLogin
+                          ? new Date(selectedUser.lastLogin).toLocaleString()
+                          : "Never"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">
-                    Email:
-                  </label>
-                  <p className="text-sm text-gray-900">{selectedUser.email}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">
-                    Role:
-                  </label>
-                  <div className="mt-1">{getRoleBadge(selectedUser.role)}</div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">
-                    Status:
-                  </label>
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2 ${
-                      selectedUser.isActive
-                        ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {selectedUser.isActive ? "Active" : "Inactive"}
-                  </span>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">
-                    Last Active:
-                  </label>
-                  <p className="text-sm text-gray-900">
-                    {selectedUser.lastLogin
-                      ? new Date(selectedUser.lastLogin).toLocaleString()
-                      : "Never"}
-                  </p>
+
+                {/* Address Information */}
+                {selectedUser.address && (
+                  <div className="mt-6">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                      Address Information
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          Street:
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {selectedUser.address.street || "Not provided"}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          City:
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {selectedUser.address.city || "Not provided"}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          State:
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {selectedUser.address.state || "Not provided"}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          ZIP Code:
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {selectedUser.address.zipCode || "Not provided"}
+                        </p>
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="text-sm font-medium text-gray-700">
+                          Country:
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {selectedUser.address.country || "Not provided"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Documents */}
+                {selectedUser.documents && (
+                  <div className="mt-6">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                      Documents
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          ID Document:
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {selectedUser.documents.idDocument || "Not provided"}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">
+                          License Document:
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {selectedUser.documents.licenseDocument ||
+                            "Not provided"}
+                        </p>
+                      </div>
+                      {selectedUser.documents.otherDocuments &&
+                        selectedUser.documents.otherDocuments.length > 0 && (
+                          <div className="md:col-span-2">
+                            <label className="text-sm font-medium text-gray-700">
+                              Other Documents:
+                            </label>
+                            <div className="mt-1 space-y-1">
+                              {selectedUser.documents.otherDocuments.map(
+                                (doc: any, index: number) => (
+                                  <div
+                                    key={index}
+                                    className="text-sm text-gray-900 bg-gray-50 p-2 rounded"
+                                  >
+                                    {doc.name} - {doc.url}
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Assigned Patients */}
+                {selectedUser.assignedPatients &&
+                  selectedUser.assignedPatients.length > 0 && (
+                    <div className="mt-6">
+                      <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                        Assigned Patients (
+                        {selectedUser.assignedPatients.length})
+                      </h4>
+                      <div className="bg-gray-50 p-4 rounded-md">
+                        <div className="space-y-2">
+                          {selectedUser.assignedPatients.map(
+                            (patient: any, index: number) => (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between bg-white p-2 rounded border"
+                              >
+                                <span className="text-sm text-gray-700">
+                                  {patient.firstName} {patient.lastName} (
+                                  {patient.patientId})
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {patient.status || "Active"}
+                                </span>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                {/* Account Information */}
+                <div className="mt-6">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                    Account Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Created:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.createdAt
+                          ? new Date(selectedUser.createdAt).toLocaleString()
+                          : "Not available"}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-700">
+                        Last Updated:
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {selectedUser.updatedAt
+                          ? new Date(selectedUser.updatedAt).toLocaleString()
+                          : "Not available"}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="mt-6 flex justify-end space-x-3">
+
+              <div className="mt-8 flex justify-end space-x-3 border-t border-gray-200 pt-4">
                 <button
                   onClick={() => setShowUserDetailsModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors duration-200"
                 >
                   Close
                 </button>
@@ -1090,9 +1635,820 @@ const AdminDashboard: React.FC = () => {
                     setShowUserDetailsModal(false);
                     handleUserAction("edit", selectedUser);
                   }}
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
                 >
                   Edit User
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {showEditUserModal && editingUser && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-5 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Edit User - {editingUser.fullName}
+                </h3>
+                <button
+                  onClick={handleCancelEdit}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Basic Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      Basic Information
+                    </h4>
+
+                    {/* First Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        First Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.firstName}
+                        onChange={(e) =>
+                          handleEditFormChange("firstName", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter first name"
+                      />
+                    </div>
+
+                    {/* Last Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Last Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.lastName}
+                        onChange={(e) =>
+                          handleEditFormChange("lastName", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter last name"
+                      />
+                    </div>
+
+                    {/* Email */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Email *
+                      </label>
+                      <input
+                        type="email"
+                        value={editFormData.email}
+                        onChange={(e) =>
+                          handleEditFormChange("email", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter email address"
+                      />
+                    </div>
+
+                    {/* Phone */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={editFormData.phone}
+                        onChange={(e) =>
+                          handleEditFormChange("phone", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter phone number"
+                      />
+                    </div>
+
+                    {/* Role */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Role *
+                      </label>
+                      <select
+                        value={editFormData.role}
+                        onChange={(e) =>
+                          handleEditFormChange("role", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      >
+                        <option value="">Select a role</option>
+                        <option value="admin">Admin</option>
+                        <option value="senior_doctor">Senior Doctor</option>
+                        <option value="consulting_doctor">
+                          Consulting Doctor
+                        </option>
+                        <option value="front-desk-coordinator">
+                          Front Desk Coordinator
+                        </option>
+                        <option value="jr-doctor">Junior Doctor</option>
+                      </select>
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Status
+                      </label>
+                      <div className="flex items-center space-x-4">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="status"
+                            checked={editFormData.isActive === true}
+                            onChange={() =>
+                              handleEditFormChange("isActive", true)
+                            }
+                            className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">
+                            Active
+                          </span>
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="status"
+                            checked={editFormData.isActive === false}
+                            onChange={() =>
+                              handleEditFormChange("isActive", false)
+                            }
+                            className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">
+                            Inactive
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Professional Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      Professional Information
+                    </h4>
+
+                    {/* Specialization */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Specialization
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.specialization}
+                        onChange={(e) =>
+                          handleEditFormChange("specialization", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="e.g., Cardiology, Neurology"
+                      />
+                    </div>
+
+                    {/* License Number */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        License Number
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.licenseNumber}
+                        onChange={(e) =>
+                          handleEditFormChange("licenseNumber", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter license number"
+                      />
+                    </div>
+
+                    {/* Started Working */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Started Working
+                      </label>
+                      <input
+                        type="date"
+                        value={editFormData.startedWorking}
+                        onChange={(e) =>
+                          handleEditFormChange("startedWorking", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      />
+                    </div>
+
+                    {/* Last Login */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Last Login
+                      </label>
+                      <input
+                        type="datetime-local"
+                        value={editFormData.lastLogin}
+                        onChange={(e) =>
+                          handleEditFormChange("lastLogin", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        disabled
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Address Information */}
+                <div className="mt-6">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                    Address Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Street Address
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.address.street}
+                        onChange={(e) =>
+                          handleNestedFormChange(
+                            "address",
+                            "street",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter street address"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        City
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.address.city}
+                        onChange={(e) =>
+                          handleNestedFormChange(
+                            "address",
+                            "city",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter city"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        State
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.address.state}
+                        onChange={(e) =>
+                          handleNestedFormChange(
+                            "address",
+                            "state",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter state"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        ZIP Code
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.address.zipCode}
+                        onChange={(e) =>
+                          handleNestedFormChange(
+                            "address",
+                            "zipCode",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter ZIP code"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Country
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.address.country}
+                        onChange={(e) =>
+                          handleNestedFormChange(
+                            "address",
+                            "country",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter country"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Documents */}
+                <div className="mt-6">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                    Documents
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        ID Document
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.documents.idDocument}
+                        onChange={(e) =>
+                          handleNestedFormChange(
+                            "documents",
+                            "idDocument",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="ID document reference"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        License Document
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.documents.licenseDocument}
+                        onChange={(e) =>
+                          handleNestedFormChange(
+                            "documents",
+                            "licenseDocument",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="License document reference"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Assigned Patients */}
+                <div className="mt-6">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                    Assigned Patients ({editFormData.assignedPatients.length})
+                  </h4>
+                  <div className="bg-gray-50 p-4 rounded-md">
+                    {editFormData.assignedPatients.length > 0 ? (
+                      <div className="space-y-2">
+                        {editFormData.assignedPatients.map(
+                          (patient: any, index: number) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between bg-white p-2 rounded border"
+                            >
+                              <span className="text-sm text-gray-700">
+                                {patient.firstName} {patient.lastName} (
+                                {patient.patientId})
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                {patient.status || "Active"}
+                              </span>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        No patients assigned
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-end space-x-3 border-t border-gray-200 pt-4">
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveUserEdit}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create User Modal */}
+      {showCreateUserModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-5 mx-auto p-5 border w-full max-w-4xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Create New User
+                </h3>
+                <button
+                  onClick={handleCancelCreate}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Basic Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      Basic Information
+                    </h4>
+
+                    {/* First Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        First Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.firstName}
+                        onChange={(e) =>
+                          handleCreateFormChange("firstName", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter first name"
+                      />
+                    </div>
+
+                    {/* Last Name */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Last Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.lastName}
+                        onChange={(e) =>
+                          handleCreateFormChange("lastName", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter last name"
+                      />
+                    </div>
+
+                    {/* Email */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Email *
+                      </label>
+                      <input
+                        type="email"
+                        value={createFormData.email}
+                        onChange={(e) =>
+                          handleCreateFormChange("email", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter email address"
+                      />
+                    </div>
+
+                    {/* Password */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Password *
+                      </label>
+                      <input
+                        type="password"
+                        value={createFormData.password}
+                        onChange={(e) =>
+                          handleCreateFormChange("password", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter password"
+                      />
+                    </div>
+
+                    {/* Phone */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={createFormData.phone}
+                        onChange={(e) =>
+                          handleCreateFormChange("phone", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter phone number"
+                      />
+                    </div>
+
+                    {/* Role */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Role *
+                      </label>
+                      <select
+                        value={createFormData.role}
+                        onChange={(e) =>
+                          handleCreateFormChange("role", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      >
+                        <option value="">Select a role</option>
+                        <option value="admin">Admin</option>
+                        <option value="senior_doctor">Senior Doctor</option>
+                        <option value="consulting_doctor">
+                          Consulting Doctor
+                        </option>
+                        <option value="front-desk-coordinator">
+                          Front Desk Coordinator
+                        </option>
+                        <option value="jr-doctor">Junior Doctor</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Professional Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2">
+                      Professional Information
+                    </h4>
+
+                    {/* Specialization */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Specialization
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.specialization}
+                        onChange={(e) =>
+                          handleCreateFormChange(
+                            "specialization",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="e.g., Cardiology, Neurology"
+                      />
+                    </div>
+
+                    {/* License Number */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        License Number
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.licenseNumber}
+                        onChange={(e) =>
+                          handleCreateFormChange(
+                            "licenseNumber",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter license number"
+                      />
+                    </div>
+
+                    {/* Hospital */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Hospital
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.hospital}
+                        onChange={(e) =>
+                          handleCreateFormChange("hospital", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter hospital name"
+                      />
+                    </div>
+
+                    {/* Department */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Department
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.department}
+                        onChange={(e) =>
+                          handleCreateFormChange("department", e.target.value)
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter department name"
+                      />
+                    </div>
+
+                    {/* Started Working */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Started Working
+                      </label>
+                      <input
+                        type="date"
+                        value={createFormData.startedWorking}
+                        onChange={(e) =>
+                          handleCreateFormChange(
+                            "startedWorking",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Address Information */}
+                <div className="mt-6">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                    Address Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Street Address
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.address.street}
+                        onChange={(e) =>
+                          handleCreateNestedFormChange(
+                            "address",
+                            "street",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter street address"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        City
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.address.city}
+                        onChange={(e) =>
+                          handleCreateNestedFormChange(
+                            "address",
+                            "city",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter city"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        State
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.address.state}
+                        onChange={(e) =>
+                          handleCreateNestedFormChange(
+                            "address",
+                            "state",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter state"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        ZIP Code
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.address.zipCode}
+                        onChange={(e) =>
+                          handleCreateNestedFormChange(
+                            "address",
+                            "zipCode",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter ZIP code"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Country
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.address.country}
+                        onChange={(e) =>
+                          handleCreateNestedFormChange(
+                            "address",
+                            "country",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="Enter country"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Documents */}
+                <div className="mt-6">
+                  <h4 className="text-md font-semibold text-gray-800 border-b border-gray-200 pb-2 mb-4">
+                    Documents
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        ID Document
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.documents.idDocument}
+                        onChange={(e) =>
+                          handleCreateNestedFormChange(
+                            "documents",
+                            "idDocument",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="ID document reference"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        License Document
+                      </label>
+                      <input
+                        type="text"
+                        value={createFormData.documents.licenseDocument}
+                        onChange={(e) =>
+                          handleCreateNestedFormChange(
+                            "documents",
+                            "licenseDocument",
+                            e.target.value
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                        placeholder="License document reference"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-end space-x-3 border-t border-gray-200 pt-4">
+                <button
+                  onClick={handleCancelCreate}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors duration-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateUser}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors duration-200"
+                >
+                  Create User
                 </button>
               </div>
             </div>

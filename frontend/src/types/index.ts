@@ -15,6 +15,7 @@ export interface User {
   department?: string;
   isActive: boolean;
   lastLogin?: string;
+  startedWorking?: string;
   profileImage?: string;
   phone?: string;
   address?: {
@@ -27,6 +28,15 @@ export interface User {
   assignedSeniorDoctor?: string;
   assignedConsultingDoctors?: string[];
   assignedPatients?: string[];
+  documents?: {
+    idDocument?: string;
+    licenseDocument?: string;
+    otherDocuments?: Array<{
+      name: string;
+      url: string;
+      uploadedAt: string;
+    }>;
+  };
   createdAt: string;
   updatedAt: string;
   fullName: string;

@@ -39,6 +39,7 @@ const userSchema = new mongoose.Schema(
         "senior_doctor",
         "consulting_doctor",
         "front-desk-coordinator",
+        "jr-doctor",
       ],
       default: "consulting_doctor",
     },
@@ -68,6 +69,9 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
     lastLogin: {
+      type: Date,
+    },
+    startedWorking: {
       type: Date,
     },
     profileImage: {
@@ -104,6 +108,27 @@ const userSchema = new mongoose.Schema(
         ref: "Patient",
       },
     ],
+    // Documents
+    documents: {
+      idDocument: {
+        type: String,
+        trim: true,
+      },
+      licenseDocument: {
+        type: String,
+        trim: true,
+      },
+      otherDocuments: [
+        {
+          name: String,
+          url: String,
+          uploadedAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+    },
   },
   {
     timestamps: true,
@@ -125,6 +150,10 @@ userSchema.index({ licenseNumber: 1 });
 userSchema.index({ assignedSeniorDoctor: 1 });
 userSchema.index({ assignedConsultingDoctors: 1 });
 userSchema.index({ assignedPatients: 1 });
+userSchema.index({ startedWorking: 1 });
+userSchema.index({ lastLogin: 1 });
+userSchema.index({ "documents.idDocument": 1 });
+userSchema.index({ "documents.licenseDocument": 1 });
 
 // Pre-save middleware to hash password
 userSchema.pre("save", async function (next) {
