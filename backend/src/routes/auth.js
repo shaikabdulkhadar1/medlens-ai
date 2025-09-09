@@ -25,13 +25,38 @@ const registerSchema = Joi.object({
   firstName: Joi.string().min(2).max(50).required(),
   lastName: Joi.string().min(2).max(50).required(),
   role: Joi.string()
-    .valid("admin", "senior_doctor", "consulting_doctor")
+    .valid(
+      "admin",
+      "senior_doctor",
+      "consulting_doctor",
+      "front-desk-coordinator",
+      "jr-doctor"
+    )
     .required(),
   specialization: Joi.string().max(100),
   licenseNumber: Joi.string(),
   hospital: Joi.string().max(100),
   department: Joi.string().max(100),
   phone: Joi.string(),
+  profileImage: Joi.string(),
+  startedWorking: Joi.date(),
+  address: Joi.object({
+    street: Joi.string().allow(""),
+    city: Joi.string().allow(""),
+    state: Joi.string().allow(""),
+    zipCode: Joi.string().allow(""),
+    country: Joi.string().allow(""),
+  }),
+  documents: Joi.object({
+    idDocument: Joi.string().allow(""),
+    licenseDocument: Joi.string().allow(""),
+    otherDocuments: Joi.array().items(
+      Joi.object({
+        name: Joi.string(),
+        url: Joi.string(),
+      })
+    ),
+  }),
   assignedSeniorDoctor: Joi.string().hex().length(24), // MongoDB ObjectId
 });
 
@@ -143,6 +168,10 @@ router.post("/register", authenticateToken, requireAdmin, async (req, res) => {
       hospital,
       department,
       phone,
+      profileImage,
+      startedWorking,
+      address,
+      documents,
       assignedSeniorDoctor,
     } = value;
 
@@ -178,6 +207,10 @@ router.post("/register", authenticateToken, requireAdmin, async (req, res) => {
       hospital,
       department,
       phone,
+      profileImage,
+      startedWorking,
+      address,
+      documents,
       assignedSeniorDoctor,
     });
 

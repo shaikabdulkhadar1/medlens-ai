@@ -183,6 +183,49 @@ const patientSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    timeline: [
+      {
+        visitDate: { type: Date, required: true },
+        visitType: {
+          type: String,
+          enum: [
+            "initial",
+            "follow-up",
+            "emergency",
+            "consultation",
+            "procedure",
+          ],
+          required: true,
+        },
+        doctor: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        diagnosis: String,
+        symptoms: [String],
+        treatment: String,
+        medications: [String],
+        notes: String,
+        vitalSigns: {
+          bloodPressure: String,
+          heartRate: String,
+          temperature: String,
+          weight: String,
+          height: String,
+          bmi: String,
+          oxygenSaturation: String,
+          respiratoryRate: String,
+        },
+        documents: [String], // References to uploaded documents
+        labResults: [String], // References to lab results
+        aiAnalysis: [String], // References to AI analysis reports
+        createdBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -204,5 +247,7 @@ patientSchema.index({ patientId: 1 });
 patientSchema.index({ assignedDoctor: 1 });
 patientSchema.index({ status: 1 });
 patientSchema.index({ createdAt: -1 });
+patientSchema.index({ "timeline.visitDate": -1 });
+patientSchema.index({ "timeline.doctor": 1 });
 
 module.exports = mongoose.model("Patient", patientSchema);

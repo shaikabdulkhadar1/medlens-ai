@@ -268,18 +268,24 @@ export const timelineAPI = {
   },
 
   updateTimelineEntry: async (
-    entryId: string,
+    patientId: string,
+    entryIndex: number,
     timelineData: any
   ): Promise<ApiResponse> => {
     const response = await api.put<ApiResponse>(
-      `/timeline/${entryId}`,
+      `/timeline/${patientId}/${entryIndex}`,
       timelineData
     );
     return response.data;
   },
 
-  deleteTimelineEntry: async (entryId: string): Promise<ApiResponse> => {
-    const response = await api.delete<ApiResponse>(`/timeline/${entryId}`);
+  deleteTimelineEntry: async (
+    patientId: string,
+    entryIndex: number
+  ): Promise<ApiResponse> => {
+    const response = await api.delete<ApiResponse>(
+      `/timeline/${patientId}/${entryIndex}`
+    );
     return response.data;
   },
 };

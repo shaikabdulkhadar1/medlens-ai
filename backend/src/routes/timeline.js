@@ -4,7 +4,7 @@ const {
   requireAnyDoctor,
   canAccessPatient,
 } = require("../middleware/auth");
-const { Timeline, Patient } = require("../db");
+const { Patient } = require("../db");
 
 const router = express.Router();
 
@@ -20,7 +20,10 @@ router.get(
       const { patientId } = req.params;
 
       // Find the patient
-      const patient = await Patient.findById(patientId);
+      const patient = await Patient.findById(patientId)
+        .populate("timeline.doctor", "firstName lastName email specialization")
+        .populate("timeline.createdBy", "firstName lastName email role");
+
       if (!patient) {
         return res.status(404).json({
           success: false,
@@ -36,13 +39,10 @@ router.get(
         });
       }
 
-      // Get timeline entries for the patient
-      const timelineEntries = await Timeline.find({
-        patientId: patientId,
-        isActive: true,
-      })
-        .populate("consultedBy", "firstName lastName email")
-        .sort({ date: -1, createdAt: -1 });
+      // Sort timeline entries by visit date (newest first)
+      const timelineEntries = patient.timeline.sort(
+        (a, b) => new Date(b.visitDate) - new Date(a.visitDate)
+      );
 
       res.json({
         success: true,
@@ -88,30 +88,52 @@ router.post(
         });
       }
 
+      // Validate required fields
+      if (!timelineData.visitDate || !timelineData.visitType) {
+        return res.status(400).json({
+          success: false,
+          message: "Visit date and visit type are required",
+        });
+      }
+
       // Create new timeline entry
-      const timelineEntry = new Timeline({
-        patientId: patientId,
-        title: timelineData.title,
-        description: timelineData.description,
-        type: timelineData.type || "other",
-        date: timelineData.date || new Date(),
-        time: timelineData.time,
-        duration: timelineData.duration,
-        consultedBy: timelineData.consultedBy || req.user._id,
-        consultationSummary: timelineData.consultationSummary,
-        documentsCount: timelineData.documentsCount || 0,
-        metadata: timelineData.metadata,
-      });
+      const newTimelineEntry = {
+        visitDate: new Date(timelineData.visitDate),
+        visitType: timelineData.visitType,
+        doctor: timelineData.doctor || req.user._id,
+        diagnosis: timelineData.diagnosis || "",
+        symptoms: timelineData.symptoms || [],
+        treatment: timelineData.treatment || "",
+        medications: timelineData.medications || [],
+        notes: timelineData.notes || "",
+        vitalSigns: timelineData.vitalSigns || {},
+        documents: timelineData.documents || [],
+        labResults: timelineData.labResults || [],
+        aiAnalysis: timelineData.aiAnalysis || [],
+        createdBy: req.user._id,
+        createdAt: new Date(),
+      };
 
-      await timelineEntry.save();
+      // Add timeline entry to patient
+      patient.timeline.push(newTimelineEntry);
+      await patient.save();
 
-      // Populate the consultedBy field
-      await timelineEntry.populate("consultedBy", "firstName lastName email");
+      // Populate the new entry
+      await patient.populate(
+        "timeline.doctor",
+        "firstName lastName email specialization"
+      );
+      await patient.populate(
+        "timeline.createdBy",
+        "firstName lastName email role"
+      );
 
-      res.json({
+      const addedEntry = patient.timeline[patient.timeline.length - 1];
+
+      res.status(201).json({
         success: true,
         message: "Timeline entry added successfully",
-        data: timelineEntry,
+        data: addedEntry,
       });
     } catch (error) {
       console.error("Add timeline entry error:", error);
@@ -123,29 +145,20 @@ router.post(
   }
 );
 
-// @route   PUT /api/timeline/:entryId
+// @route   PUT /api/timeline/:patientId/:entryIndex
 // @desc    Update a timeline entry
 // @access  Private
 router.put(
-  "/:entryId",
+  "/:patientId/:entryIndex",
   authenticateToken,
   requireAnyDoctor,
   async (req, res) => {
     try {
-      const { entryId } = req.params;
+      const { patientId, entryIndex } = req.params;
       const updateData = req.body;
 
-      // Find the timeline entry
-      const timelineEntry = await Timeline.findById(entryId);
-      if (!timelineEntry) {
-        return res.status(404).json({
-          success: false,
-          message: "Timeline entry not found",
-        });
-      }
-
-      // Find the patient to check permissions
-      const patient = await Patient.findById(timelineEntry.patientId);
+      // Find the patient
+      const patient = await Patient.findById(patientId);
       if (!patient) {
         return res.status(404).json({
           success: false,
@@ -161,17 +174,56 @@ router.put(
         });
       }
 
+      // Check if entry index is valid
+      const index = parseInt(entryIndex);
+      if (index < 0 || index >= patient.timeline.length) {
+        return res.status(404).json({
+          success: false,
+          message: "Timeline entry not found",
+        });
+      }
+
       // Update the timeline entry
-      const updatedEntry = await Timeline.findByIdAndUpdate(
-        entryId,
-        { $set: updateData },
-        { new: true, runValidators: true }
-      ).populate("consultedBy", "firstName lastName email");
+      const timelineEntry = patient.timeline[index];
+
+      // Update fields if provided
+      if (updateData.visitDate)
+        timelineEntry.visitDate = new Date(updateData.visitDate);
+      if (updateData.visitType) timelineEntry.visitType = updateData.visitType;
+      if (updateData.doctor) timelineEntry.doctor = updateData.doctor;
+      if (updateData.diagnosis !== undefined)
+        timelineEntry.diagnosis = updateData.diagnosis;
+      if (updateData.symptoms) timelineEntry.symptoms = updateData.symptoms;
+      if (updateData.treatment !== undefined)
+        timelineEntry.treatment = updateData.treatment;
+      if (updateData.medications)
+        timelineEntry.medications = updateData.medications;
+      if (updateData.notes !== undefined)
+        timelineEntry.notes = updateData.notes;
+      if (updateData.vitalSigns)
+        timelineEntry.vitalSigns = updateData.vitalSigns;
+      if (updateData.documents) timelineEntry.documents = updateData.documents;
+      if (updateData.labResults)
+        timelineEntry.labResults = updateData.labResults;
+      if (updateData.aiAnalysis)
+        timelineEntry.aiAnalysis = updateData.aiAnalysis;
+
+      await patient.save();
+
+      // Populate the updated entry
+      await patient.populate(
+        "timeline.doctor",
+        "firstName lastName email specialization"
+      );
+      await patient.populate(
+        "timeline.createdBy",
+        "firstName lastName email role"
+      );
 
       res.json({
         success: true,
         message: "Timeline entry updated successfully",
-        data: updatedEntry,
+        data: patient.timeline[index],
       });
     } catch (error) {
       console.error("Update timeline entry error:", error);
@@ -183,28 +235,19 @@ router.put(
   }
 );
 
-// @route   DELETE /api/timeline/:entryId
-// @desc    Delete a timeline entry (soft delete)
+// @route   DELETE /api/timeline/:patientId/:entryIndex
+// @desc    Delete a timeline entry
 // @access  Private
 router.delete(
-  "/:entryId",
+  "/:patientId/:entryIndex",
   authenticateToken,
   requireAnyDoctor,
   async (req, res) => {
     try {
-      const { entryId } = req.params;
+      const { patientId, entryIndex } = req.params;
 
-      // Find the timeline entry
-      const timelineEntry = await Timeline.findById(entryId);
-      if (!timelineEntry) {
-        return res.status(404).json({
-          success: false,
-          message: "Timeline entry not found",
-        });
-      }
-
-      // Find the patient to check permissions
-      const patient = await Patient.findById(timelineEntry.patientId);
+      // Find the patient
+      const patient = await Patient.findById(patientId);
       if (!patient) {
         return res.status(404).json({
           success: false,
@@ -220,8 +263,18 @@ router.delete(
         });
       }
 
-      // Soft delete the timeline entry
-      await Timeline.findByIdAndUpdate(entryId, { isActive: false });
+      // Check if entry index is valid
+      const index = parseInt(entryIndex);
+      if (index < 0 || index >= patient.timeline.length) {
+        return res.status(404).json({
+          success: false,
+          message: "Timeline entry not found",
+        });
+      }
+
+      // Remove the timeline entry
+      patient.timeline.splice(index, 1);
+      await patient.save();
 
       res.json({
         success: true,

@@ -550,17 +550,33 @@ const AdminDashboard: React.FC = () => {
         return;
       }
 
-      // In real app, call API to create user
-      const newUser = {
-        ...createFormData,
-        fullName: `${createFormData.firstName} ${createFormData.lastName}`,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      // Call API to create user
+      const payload: any = {
+        email: createFormData.email,
+        password: createFormData.password,
+        firstName: createFormData.firstName,
+        lastName: createFormData.lastName,
+        role: createFormData.role,
+        specialization: createFormData.specialization || undefined,
+        licenseNumber: createFormData.licenseNumber || undefined,
+        hospital: createFormData.hospital || undefined,
+        department: createFormData.department || undefined,
+        phone: createFormData.phone || undefined,
+        startedWorking: createFormData.startedWorking || undefined,
+        address: createFormData.address,
+        documents: createFormData.documents,
       };
 
-      // Add to users list (in real app, this would come from API response)
-      setUsers((prev) => [...prev, newUser]);
+      const registerRes = await authAPI.registerUser(payload);
+      if (!registerRes.success) {
+        throw new Error(registerRes.message || "Registration failed");
+      }
+
+      // Refresh users list from server
+      const usersRes = await authAPI.getUsers();
+      if (usersRes.success) {
+        setUsers(usersRes.users || usersRes.data?.users || []);
+      }
 
       // Close modal and reset form
       setShowCreateUserModal(false);

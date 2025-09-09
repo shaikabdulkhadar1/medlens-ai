@@ -76,6 +76,8 @@ const PatientDetails: React.FC = () => {
     (file) => file.documentType === "ai-analysis-report"
   );
   const [expandedTimeline, setExpandedTimeline] = useState<string | null>(null);
+  const [timelineData, setTimelineData] = useState<any[]>([]);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [expandedDocuments, setExpandedDocuments] = useState<boolean>(true);
   const [expandedAnalysisReports, setExpandedAnalysisReports] =
     useState<boolean>(true);
@@ -97,6 +99,7 @@ const PatientDetails: React.FC = () => {
       loadPatientDetails();
       loadPatientFiles();
       loadAIAnalyses();
+      loadTimelineData();
     }
   }, [patientId]);
 
@@ -149,6 +152,28 @@ const PatientDetails: React.FC = () => {
       console.error("Error loading AI analyses:", error);
     } finally {
       setIsLoadingAnalysis(false);
+    }
+  };
+
+  const loadTimelineData = async () => {
+    if (!patientId) return;
+
+    try {
+      setLoadingTimeline(true);
+      const response = await timelineAPI.getPatientTimeline(patientId);
+      if (response.success) {
+        // Sort timeline entries by visitDate in descending order (most recent first)
+        const sortedTimeline = (response.data || []).sort((a: any, b: any) => {
+          const dateA = new Date(a.visitDate).getTime();
+          const dateB = new Date(b.visitDate).getTime();
+          return dateB - dateA; // Descending order (newest first)
+        });
+        setTimelineData(sortedTimeline);
+      }
+    } catch (error) {
+      console.error("Error loading timeline data:", error);
+    } finally {
+      setLoadingTimeline(false);
     }
   };
 
@@ -314,117 +339,38 @@ const PatientDetails: React.FC = () => {
     });
   };
 
-  const handleFileDownload = async (fileKey: string, fileName: string) => {
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const handleDownloadFile = async (fileKey: string) => {
     try {
-      console.log("🔍 Download request:", { fileKey, fileName });
-      console.log("🔍 FileKey type:", typeof fileKey);
-      console.log("🔍 FileKey length:", fileKey?.length);
-      console.log("🔍 FileKey value:", JSON.stringify(fileKey));
-
-      // Check authentication status
-      const token = localStorage.getItem("token");
-      console.log("🔐 Authentication token exists:", !!token);
-      console.log(
-        "🔐 Token value:",
-        token ? `${token.substring(0, 20)}...` : "null"
-      );
-
-      // Check the exact URL being called
-      const apiUrl = `${
-        process.env.REACT_APP_API_URL || "http://localhost:5001/api"
-      }/upload/download/${fileKey}`;
-      console.log("🌐 API URL being called:", apiUrl);
-
       const response = await uploadAPI.getDownloadUrl(fileKey);
-      console.log("📥 Download response:", response);
       if (response.success && response.downloadUrl) {
         const link = document.createElement("a");
         link.href = response.downloadUrl;
-        link.download = fileName;
+        link.download = fileKey;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
       }
     } catch (error) {
-      console.error("❌ Error downloading file:", error);
-      if (error && typeof error === "object" && "response" in error) {
-        const axiosError = error as any;
-        console.error("Error details:", {
-          message: axiosError.message,
-          status: axiosError.response?.status,
-          data: axiosError.response?.data,
-          url: axiosError.config?.url,
-          headers: axiosError.config?.headers,
-        });
-      }
+      console.error("Error downloading file:", error);
     }
   };
 
-  const handleFileDelete = async (fileKey: string, fileName: string) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${fileName}"? This action cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
+  const handleDeleteFile = async (fileKey: string) => {
     try {
-      console.log("Attempting to delete file:", { fileKey, fileName });
       const response = await uploadAPI.deleteFile(fileKey);
-      console.log("Delete response:", response);
-
       if (response.success) {
-        // Reload patient files after deletion
         loadPatientFiles();
-        alert(`File "${fileName}" deleted successfully.`);
-      } else {
-        console.error("Delete failed:", response);
-        alert(`Failed to delete file: ${response.message || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Error deleting file:", error);
-      alert(
-        `Error deleting file: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    }
-  };
-
-  const handleViewPDF = async (fileKey: string) => {
-    try {
-      console.log("🔍 View PDF request:", { fileKey });
-
-      // Check authentication status
-      const token = localStorage.getItem("token");
-      console.log("🔐 Authentication token exists:", !!token);
-
-      // Check the exact URL being called
-      const apiUrl = `${
-        process.env.REACT_APP_API_URL || "http://localhost:5001/api"
-      }/upload/download/${fileKey}`;
-      console.log("🌐 API URL being called:", apiUrl);
-
-      const response = await uploadAPI.getDownloadUrl(fileKey);
-      console.log("📥 View PDF response:", response);
-      if (response.success && response.downloadUrl) {
-        // Open PDF in new tab
-        window.open(response.downloadUrl, "_blank");
-      } else {
-        alert("Failed to get PDF URL");
-      }
-    } catch (error) {
-      console.error("❌ Error viewing PDF:", error);
-      if (error && typeof error === "object" && "response" in error) {
-        const axiosError = error as any;
-        console.error("Error details:", {
-          message: axiosError.message,
-          status: axiosError.response?.status,
-          data: axiosError.response?.data,
-          url: axiosError.config?.url,
-          headers: axiosError.config?.headers,
-        });
-      }
-      alert("Error viewing PDF file");
     }
   };
 
@@ -433,123 +379,14 @@ const PatientDetails: React.FC = () => {
 
     const fileKeys = Array.from(selectedDocuments);
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${selectedDocuments.size} selected document(s)? This action cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
     try {
-      console.log("Attempting bulk delete for files:", fileKeys);
       const response = await uploadAPI.bulkDeleteFiles(fileKeys);
-      console.log("Bulk delete response:", response);
-
       if (response.success) {
-        const { summary } = response;
         setSelectedDocuments(new Set());
         loadPatientFiles();
-
-        if (summary.failed === 0) {
-          alert(`Successfully deleted all ${summary.successful} document(s).`);
-        } else {
-          alert(
-            `Bulk delete completed: ${summary.successful} successful, ${summary.failed} failed.`
-          );
-        }
-      } else {
-        if (response.unauthorizedFiles) {
-          alert(
-            `Cannot delete some files: ${response.unauthorizedFiles.join(
-              ", "
-            )}. You can only delete files you uploaded.`
-          );
-        } else {
-          alert(
-            `Failed to delete documents: ${response.message || "Unknown error"}`
-          );
-        }
       }
     } catch (error) {
       console.error("Error in bulk delete:", error);
-      alert(
-        `Error deleting documents: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    }
-  };
-
-  const handleBulkDeleteAnalysisReports = async () => {
-    if (selectedAnalysisReports.size === 0) return;
-
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${selectedAnalysisReports.size} selected analysis report(s)? This action cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      // Note: This would need a backend endpoint to delete analysis reports
-      // For now, we'll just show a placeholder message
-      alert(
-        "Analysis report deletion functionality will be implemented with backend support."
-      );
-      setSelectedAnalysisReports(new Set());
-    } catch (error) {
-      console.error("Error in bulk delete analysis reports:", error);
-      alert(
-        `Error deleting analysis reports: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    }
-  };
-
-  const toggleDocumentSelection = (fileKey: string) => {
-    const newSelected = new Set(selectedDocuments);
-    if (newSelected.has(fileKey)) {
-      newSelected.delete(fileKey);
-    } else {
-      newSelected.add(fileKey);
-    }
-    setSelectedDocuments(newSelected);
-  };
-
-  const toggleAnalysisReportSelection = (analysisId: string) => {
-    const newSelected = new Set(selectedAnalysisReports);
-    if (newSelected.has(analysisId)) {
-      newSelected.delete(analysisId);
-    } else {
-      newSelected.add(analysisId);
-    }
-    setSelectedAnalysisReports(newSelected);
-  };
-
-  const getFileIcon = (fileName: string, documentType?: string) => {
-    const extension = fileName.split(".").pop()?.toLowerCase();
-
-    // Special handling for AI analysis reports
-    if (documentType === "ai-analysis-report") {
-      if (extension === "pdf") {
-        return <Brain className="w-5 h-5 text-purple-600" />;
-      }
-      return <Brain className="w-5 h-5 text-purple-500" />;
-    }
-
-    switch (extension) {
-      case "pdf":
-        return <FileText className="w-5 h-5 text-red-500" />;
-      case "jpg":
-      case "jpeg":
-      case "png":
-        return <FileText className="w-5 h-5 text-blue-500" />;
-      case "doc":
-      case "docx":
-        return <FileText className="w-5 h-5 text-blue-600" />;
-      case "txt":
-        return <FileText className="w-5 h-5 text-gray-500" />;
-      default:
-        return <FileText className="w-5 h-5 text-gray-400" />;
     }
   };
 
@@ -573,18 +410,11 @@ const PatientDetails: React.FC = () => {
       if (response.success) {
         // Add timeline entry for case closure
         await timelineAPI.addTimelineEntry(patient._id, {
-          title: "Case Closed",
-          description: "Patient case has been closed and marked as inactive.",
-          type: "case_closed",
-          date: new Date(),
-          time: new Date().toLocaleTimeString(),
-          consultedBy: user._id,
-          consultationSummary: `Case closed by ${user.firstName} ${user.lastName}. Patient is no longer active in the system.`,
-          documentsCount: 0,
-          metadata: {
-            closedBy: user._id,
-            closureReason: "Case completion",
-          },
+          visitDate: new Date(),
+          visitType: "consultation",
+          diagnosis: "Case closed",
+          notes: `Case closed by ${user.firstName} ${user.lastName}. Patient is no longer active in the system.`,
+          doctor: user._id,
         });
 
         // Update local patient state
@@ -618,283 +448,6 @@ const PatientDetails: React.FC = () => {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     setUploadedFiles((prev) => [...prev, ...files]);
-  };
-
-  const removeFile = (index: number) => {
-    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const uploadFilesAndAnalyze = async () => {
-    if (uploadedFiles.length === 0 || !patientId) return;
-
-    setIsUploading(true);
-    setIsAnalyzing(true);
-    setUploadProgress({});
-
-    try {
-      // Step 1: Upload files to R2
-      console.log("📤 Starting file upload to R2...");
-
-      // Initialize progress for all files
-      uploadedFiles.forEach((file) => {
-        setUploadProgress((prev) => ({ ...prev, [file.name]: 0 }));
-      });
-
-      // Generate presigned URLs
-      const response: UploadResponse = await uploadAPI.generateUploadUrls(
-        uploadedFiles,
-        patientId
-      );
-
-      if (!response.success) {
-        throw new Error(response.message || "Failed to generate upload URLs");
-      }
-
-      // Upload each file using presigned URLs
-      const uploadPromises = response.uploadUrls.map(
-        async (uploadUrl: UploadUrl) => {
-          try {
-            // Update progress to 25% (uploading)
-            setUploadProgress((prev) => ({
-              ...prev,
-              [uploadUrl.fileName]: 25,
-            }));
-
-            // Extract metadata from presigned URL
-            const url = new URL(uploadUrl.presignedUrl);
-            const params = new URLSearchParams(url.search);
-            const metadata = {
-              originalname: params.get("x-amz-meta-originalname") || "",
-              patientid: params.get("x-amz-meta-patientid") || "",
-              uploadedby: params.get("x-amz-meta-uploadedby") || "",
-            };
-
-            await uploadAPI.uploadToPresignedUrl(
-              uploadUrl.presignedUrl,
-              uploadedFiles.find((f) => f.name === uploadUrl.fileName)!,
-              metadata
-            );
-
-            // Update progress to 75% (uploaded, confirming)
-            setUploadProgress((prev) => ({
-              ...prev,
-              [uploadUrl.fileName]: 75,
-            }));
-
-            // Confirm upload
-            const confirmResponse = await uploadAPI.confirmUpload(
-              uploadUrl.uploadId,
-              uploadUrl.key
-            );
-
-            // Update progress to 100% (completed)
-            setUploadProgress((prev) => ({
-              ...prev,
-              [uploadUrl.fileName]: 100,
-            }));
-
-            console.log(`✅ File uploaded successfully: ${uploadUrl.fileName}`);
-            return {
-              success: true,
-              uploadId: confirmResponse.uploadRecord?.id,
-              fileName: uploadUrl.fileName,
-            };
-          } catch (error) {
-            console.error(`❌ Error uploading ${uploadUrl.fileName}:`, error);
-            return {
-              success: false,
-              fileName: uploadUrl.fileName,
-              error: error instanceof Error ? error.message : "Unknown error",
-            };
-          }
-        }
-      );
-
-      // Wait for all uploads to complete
-      const results = await Promise.all(uploadPromises);
-      const successfulUploads = results.filter((r) => r.success);
-      const failedUploads = results.filter((r) => !r.success);
-
-      if (successfulUploads.length === 0) {
-        throw new Error("All uploads failed");
-      }
-
-      console.log(`📁 Successfully uploaded ${successfulUploads.length} files`);
-
-      // Step 2: Trigger AI analysis for each uploaded file
-      console.log("🤖 Starting AI analysis...");
-
-      const analysisPromises = successfulUploads.map(async (upload) => {
-        if (!upload.uploadId) return;
-
-        try {
-          console.log(`🔍 Analyzing file: ${upload.fileName}`);
-          const analysisResponse = await uploadAPI.analyzeDocument(
-            upload.uploadId,
-            patientId
-          );
-
-          if (analysisResponse.success) {
-            console.log(`✅ AI analysis completed for: ${upload.fileName}`);
-            return analysisResponse.data;
-          } else {
-            console.error(`❌ AI analysis failed for: ${upload.fileName}`);
-            return null;
-          }
-        } catch (error) {
-          console.error(
-            `❌ Error during AI analysis for ${upload.fileName}:`,
-            error
-          );
-          return null;
-        }
-      });
-
-      // Wait for all AI analyses to complete
-      const analysisResults = await Promise.all(analysisPromises);
-      const validResults = analysisResults.filter(
-        (result: any) => result !== null
-      );
-
-      console.log(`🎯 AI analysis completed for ${validResults.length} files`);
-
-      // Step 3: Reload AI analyses to show results
-      await loadAIAnalyses();
-
-      // Show success message
-      const message =
-        failedUploads.length > 0
-          ? `Successfully uploaded and analyzed ${successfulUploads.length} files. ${failedUploads.length} files failed.`
-          : `Successfully uploaded and analyzed ${successfulUploads.length} files!`;
-
-      alert(message);
-    } catch (error) {
-      console.error("❌ Error during upload and analysis:", error);
-      alert(
-        `Error during upload and analysis: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    } finally {
-      setIsUploading(false);
-      setIsAnalyzing(false);
-      setUploadProgress({});
-      setUploadedFiles([]); // Clear uploaded files after processing
-    }
-  };
-
-  const uploadFilesToCloud = async () => {
-    if (uploadedFiles.length === 0 || !patientId) return;
-
-    setIsUploadingToCloud(true);
-    setCloudUploadProgress({});
-
-    try {
-      // Initialize progress for all files
-      uploadedFiles.forEach((file) => {
-        setCloudUploadProgress((prev) => ({ ...prev, [file.name]: 0 }));
-      });
-
-      // Step 1: Generate presigned URLs
-      const response: UploadResponse = await uploadAPI.generateUploadUrls(
-        uploadedFiles,
-        patientId
-      );
-
-      if (!response.success) {
-        throw new Error(response.message || "Failed to generate upload URLs");
-      }
-
-      // Step 2: Upload each file using presigned URLs
-      const uploadPromises = response.uploadUrls.map(
-        async (uploadUrl: UploadUrl) => {
-          try {
-            const file = uploadedFiles.find(
-              (f) => f.name === uploadUrl.fileName
-            );
-            if (!file) {
-              throw new Error(`File ${uploadUrl.fileName} not found`);
-            }
-
-            // Update progress to 50% (uploading)
-            setCloudUploadProgress((prev) => ({
-              ...prev,
-              [uploadUrl.fileName]: 50,
-            }));
-
-            // Upload to presigned URL
-            // Extract metadata from presigned URL query parameters
-            const url = new URL(uploadUrl.presignedUrl);
-            const params = new URLSearchParams(url.search);
-
-            const metadata = {
-              originalname: params.get("x-amz-meta-originalname") || "",
-              patientid: params.get("x-amz-meta-patientid") || "",
-              uploadedby: params.get("x-amz-meta-uploadedby") || "",
-            };
-
-            await uploadAPI.uploadToPresignedUrl(
-              uploadUrl.presignedUrl,
-              file,
-              metadata
-            );
-
-            // Update progress to 75% (uploaded, confirming)
-            setCloudUploadProgress((prev) => ({
-              ...prev,
-              [uploadUrl.fileName]: 75,
-            }));
-
-            // Step 3: Confirm upload
-            await uploadAPI.confirmUpload(uploadUrl.uploadId, uploadUrl.key);
-
-            // Update progress to 100% (completed)
-            setCloudUploadProgress((prev) => ({
-              ...prev,
-              [uploadUrl.fileName]: 100,
-            }));
-
-            return { success: true, fileName: uploadUrl.fileName };
-          } catch (error) {
-            console.error(`Error uploading ${uploadUrl.fileName}:`, error);
-            return {
-              success: false,
-              fileName: uploadUrl.fileName,
-              error: error instanceof Error ? error.message : "Unknown error",
-            };
-          }
-        }
-      );
-
-      // Wait for all uploads to complete
-      const results = await Promise.all(uploadPromises);
-      const successfulUploads = results.filter((r) => r.success);
-      const failedUploads = results.filter((r) => !r.success);
-
-      // Clear uploaded files after successful upload
-      setUploadedFiles([]);
-
-      // Show success/error message
-      if (successfulUploads.length > 0) {
-        const message =
-          failedUploads.length > 0
-            ? `Successfully uploaded ${successfulUploads.length} files. ${failedUploads.length} files failed.`
-            : `Successfully uploaded ${successfulUploads.length} files to cloud storage!`;
-        alert(message);
-      } else {
-        throw new Error("All uploads failed");
-      }
-    } catch (error) {
-      console.error("Error uploading files to cloud:", error);
-      alert(
-        `Error uploading files to cloud: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    } finally {
-      setIsUploadingToCloud(false);
-      setCloudUploadProgress({});
-    }
   };
 
   if (isLoading) {
@@ -1004,235 +557,6 @@ const PatientDetails: React.FC = () => {
                     >
                       {patient.isActive ? "Active" : "Inactive"}
                     </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Patient Documents */}
-              <div className="mb-8">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                  Patient Documents
-                </h3>
-
-                {/* Document Tabs */}
-                <div className="bg-white rounded-lg border border-gray-200">
-                  <div className="border-b border-gray-200">
-                    <div className="flex">
-                      <button
-                        onClick={() => setActiveDocumentTab("uploaded")}
-                        className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
-                          activeDocumentTab === "uploaded"
-                            ? "border-primary-500 text-primary-600"
-                            : "border-transparent text-gray-500 hover:text-gray-700"
-                        }`}
-                      >
-                        <div className="flex items-center justify-center space-x-2">
-                          <FileText className="w-4 h-4" />
-                          <span>Uploaded Documents</span>
-                        </div>
-                      </button>
-                      <button
-                        onClick={() => setActiveDocumentTab("ai")}
-                        className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
-                          activeDocumentTab === "ai"
-                            ? "border-primary-500 text-primary-600"
-                            : "border-transparent text-gray-500 hover:text-gray-700"
-                        }`}
-                      >
-                        <div className="flex items-center justify-center space-x-2">
-                          <Brain className="w-4 h-4" />
-                          <span>AI Analysis Reports</span>
-                        </div>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Tab Content */}
-                  <div className="p-4">
-                    {activeDocumentTab === "uploaded" && (
-                      <div>
-                        {isLoadingFiles ? (
-                          <div className="flex items-center justify-center py-8">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
-                          </div>
-                        ) : userUploadedFiles.length === 0 ? (
-                          <div className="text-center py-8">
-                            <FileText className="mx-auto h-8 w-8 text-gray-400" />
-                            <p className="text-sm text-gray-500 mt-2">
-                              No documents uploaded
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {userUploadedFiles
-                              .slice(0, 5)
-                              .map((file, index) => (
-                                <div
-                                  key={index}
-                                  className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg"
-                                >
-                                  {getFileIcon(
-                                    file.originalName,
-                                    file.documentType
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900 truncate">
-                                      {file.originalName}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                      {file.fileSize
-                                        ? `${(
-                                            file.fileSize /
-                                            1024 /
-                                            1024
-                                          ).toFixed(2)} MB`
-                                        : "Unknown size"}
-                                    </p>
-                                    {file.createdAt && (
-                                      <p className="text-xs text-gray-400">
-                                        {formatDate(file.createdAt)}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center space-x-1">
-                                    <button
-                                      onClick={() =>
-                                        handleFileDownload(
-                                          file.fileKey,
-                                          file.originalName
-                                        )
-                                      }
-                                      className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                                      title="Download"
-                                    >
-                                      <Download className="w-4 h-4" />
-                                    </button>
-                                    {file.contentType === "application/pdf" && (
-                                      <button
-                                        onClick={() =>
-                                          handleViewPDF(file.fileKey)
-                                        }
-                                        className="p-1 text-gray-400 hover:text-green-600 rounded"
-                                        title="View PDF"
-                                      >
-                                        <Eye className="w-4 h-4" />
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            {userUploadedFiles.length > 5 && (
-                              <div className="text-center pt-2">
-                                <button
-                                  onClick={() => setActiveTab("documents")}
-                                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
-                                >
-                                  View all {userUploadedFiles.length} documents
-                                  →
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {activeDocumentTab === "ai" && (
-                      <div>
-                        {isLoadingAnalysis ? (
-                          <div className="flex items-center justify-center py-8">
-                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
-                          </div>
-                        ) : aiAnalyses.length === 0 ? (
-                          <div className="text-center py-8">
-                            <Brain className="mx-auto h-8 w-8 text-gray-400" />
-                            <p className="text-sm text-gray-500 mt-2">
-                              No AI analysis reports
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {aiAnalyses.slice(0, 5).map((analysis, index) => (
-                              <div
-                                key={index}
-                                className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg"
-                              >
-                                <Brain className="w-5 h-5 text-purple-600" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-900 truncate">
-                                    {analysis.fileName ||
-                                      analysis.originalName ||
-                                      "AI Analysis Report"}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    {analysis.analysisType
-                                      ? analysis.analysisType
-                                          .replace(/_/g, " ")
-                                          .replace(/\b\w/g, (l) =>
-                                            l.toUpperCase()
-                                          )
-                                      : "Analysis Report"}
-                                  </p>
-                                  {analysis.createdAt && (
-                                    <p className="text-xs text-gray-400">
-                                      Generated {formatDate(analysis.createdAt)}
-                                    </p>
-                                  )}
-                                  {analysis.status && (
-                                    <p className="text-xs text-gray-500">
-                                      Status: {analysis.status}
-                                    </p>
-                                  )}
-                                </div>
-                                <div className="flex items-center space-x-1">
-                                  {analysis.fileKey && (
-                                    <button
-                                      onClick={() => {
-                                        if (analysis.fileKey) {
-                                          handleFileDownload(
-                                            analysis.fileKey,
-                                            analysis.fileName ||
-                                              "AI Analysis Report"
-                                          );
-                                        }
-                                      }}
-                                      className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                                      title="Download"
-                                    >
-                                      <Download className="w-4 h-4" />
-                                    </button>
-                                  )}
-                                  {analysis.contentType === "application/pdf" &&
-                                    analysis.fileKey && (
-                                      <button
-                                        onClick={() => {
-                                          if (analysis.fileKey) {
-                                            handleViewPDF(analysis.fileKey);
-                                          }
-                                        }}
-                                        className="p-1 text-gray-400 hover:text-green-600 rounded"
-                                        title="View PDF"
-                                      >
-                                        <Eye className="w-4 h-4" />
-                                      </button>
-                                    )}
-                                </div>
-                              </div>
-                            ))}
-                            {aiAnalyses.length > 5 && (
-                              <div className="text-center pt-2">
-                                <button
-                                  onClick={() => setActiveTab("documents")}
-                                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
-                                >
-                                  View all {aiAnalyses.length} reports →
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1508,15 +832,125 @@ const PatientDetails: React.FC = () => {
                     {/* Vertical Timeline Line */}
                     <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gray-300"></div>
 
-                    <div className="space-y-6">
-                      {/* Case Closed Entry - Show only if patient is inactive */}
-                      {!patient.isActive && (
+                    {loadingTimeline ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+                        <span className="ml-2 text-gray-600">
+                          Loading timeline...
+                        </span>
+                      </div>
+                    ) : timelineData.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Clock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">
+                          No Timeline Entries
+                        </h3>
+                        <p className="text-gray-600">
+                          No visit history recorded for this patient yet.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Case Closed Entry - Show only if patient is inactive */}
+                        {!patient.isActive && (
+                          <div className="relative">
+                            <div className="flex items-start">
+                              {/* Timeline Node */}
+                              <div className="relative z-10 flex-shrink-0">
+                                <div className="w-12 h-12 bg-red-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                                  <X className="w-5 h-5 text-white" />
+                                </div>
+                              </div>
+
+                              {/* Content Card */}
+                              <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
+                                {/* Collapsed View */}
+                                <div className="p-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <h4 className="text-xl font-semibold text-gray-900">
+                                        Case Closed
+                                      </h4>
+                                      <p className="text-sm text-gray-600 mt-1">
+                                        Patient case has been closed and marked
+                                        as inactive.
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center space-x-3 ml-4">
+                                      <div className="text-right">
+                                        <div className="text-sm font-medium text-gray-900">
+                                          {formatDate(new Date().toISOString())}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          Case Closed
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() =>
+                                          setExpandedTimeline(
+                                            expandedTimeline === "case-closed"
+                                              ? null
+                                              : "case-closed"
+                                          )
+                                        }
+                                        className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                      >
+                                        {expandedTimeline === "case-closed" ? (
+                                          <ChevronUp className="w-4 h-4" />
+                                        ) : (
+                                          <ChevronDown className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Expanded Details */}
+                                {expandedTimeline === "case-closed" && (
+                                  <div className="border-t border-gray-100 p-4 bg-gray-50">
+                                    <div className="space-y-4">
+                                      <div className="flex items-center space-x-2">
+                                        <UserIcon className="w-4 h-4 text-gray-500" />
+                                        <span className="text-sm font-medium text-gray-700">
+                                          Closed by: {user?.firstName}{" "}
+                                          {user?.lastName}
+                                        </span>
+                                      </div>
+                                      <p className="text-sm text-gray-600">
+                                        Patient case has been officially closed.
+                                        The patient is no longer active in the
+                                        system. All medical records and
+                                        documents remain accessible for
+                                        reference purposes.
+                                      </p>
+                                      <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                        <span className="flex items-center space-x-1">
+                                          <Clock className="w-3 h-3" />
+                                          <span>Case Status: Inactive</span>
+                                        </span>
+                                        <span className="flex items-center space-x-1">
+                                          <UserIcon className="w-3 h-3" />
+                                          <span>
+                                            Patient: {patient.firstName}{" "}
+                                            {patient.lastName}
+                                          </span>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Patient Registration Entry */}
                         <div className="relative">
                           <div className="flex items-start">
                             {/* Timeline Node */}
                             <div className="relative z-10 flex-shrink-0">
-                              <div className="w-12 h-12 bg-red-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                                <X className="w-5 h-5 text-white" />
+                              <div className="w-12 h-12 bg-blue-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
+                                <UserIcon className="w-5 h-5 text-white" />
                               </div>
                             </div>
 
@@ -1527,33 +961,37 @@ const PatientDetails: React.FC = () => {
                                 <div className="flex items-center justify-between">
                                   <div className="flex-1">
                                     <h4 className="text-xl font-semibold text-gray-900">
-                                      Case Closed
+                                      Patient Registration
                                     </h4>
                                     <p className="text-sm text-gray-600 mt-1">
-                                      Patient case has been closed and marked as
-                                      inactive.
+                                      Patient {patient.firstName}{" "}
+                                      {patient.lastName} was registered in the
+                                      system.
                                     </p>
                                   </div>
                                   <div className="flex items-center space-x-3 ml-4">
                                     <div className="text-right">
                                       <div className="text-sm font-medium text-gray-900">
-                                        {formatDate(new Date().toISOString())}
+                                        {formatDate(
+                                          patient.createdAt ||
+                                            patient.dateOfBirth
+                                        )}
                                       </div>
                                       <div className="text-xs text-gray-500">
-                                        Case Closed
+                                        Registration
                                       </div>
                                     </div>
                                     <button
                                       onClick={() =>
                                         setExpandedTimeline(
-                                          expandedTimeline === "case-closed"
+                                          expandedTimeline === "registration"
                                             ? null
-                                            : "case-closed"
+                                            : "registration"
                                         )
                                       }
                                       className="p-1 text-gray-400 hover:text-gray-600 rounded"
                                     >
-                                      {expandedTimeline === "case-closed" ? (
+                                      {expandedTimeline === "registration" ? (
                                         <ChevronUp className="w-4 h-4" />
                                       ) : (
                                         <ChevronDown className="w-4 h-4" />
@@ -1564,32 +1002,38 @@ const PatientDetails: React.FC = () => {
                               </div>
 
                               {/* Expanded Details */}
-                              {expandedTimeline === "case-closed" && (
+                              {expandedTimeline === "registration" && (
                                 <div className="border-t border-gray-100 p-4 bg-gray-50">
                                   <div className="space-y-4">
                                     <div className="flex items-center space-x-2">
                                       <UserIcon className="w-4 h-4 text-gray-500" />
                                       <span className="text-sm font-medium text-gray-700">
-                                        Closed by: {user?.firstName}{" "}
-                                        {user?.lastName}
+                                        Patient ID: {patient.patientId}
                                       </span>
                                     </div>
                                     <p className="text-sm text-gray-600">
-                                      Patient case has been officially closed.
-                                      The patient is no longer active in the
-                                      system. All medical records and documents
-                                      remain accessible for reference purposes.
+                                      Initial patient registration completed.
+                                      Basic demographic information, contact
+                                      details, and medical history were
+                                      collected. Patient was assigned to the
+                                      system for ongoing care management.
                                     </p>
                                     <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
                                       <span className="flex items-center space-x-1">
                                         <Clock className="w-3 h-3" />
-                                        <span>Case Status: Inactive</span>
+                                        <span>
+                                          Status:{" "}
+                                          {patient.isActive
+                                            ? "Active"
+                                            : "Inactive"}
+                                        </span>
                                       </span>
                                       <span className="flex items-center space-x-1">
                                         <UserIcon className="w-3 h-3" />
                                         <span>
-                                          Patient: {patient.firstName}{" "}
-                                          {patient.lastName}
+                                          Age:{" "}
+                                          {calculateAge(patient.dateOfBirth)}{" "}
+                                          years
                                         </span>
                                       </span>
                                     </div>
@@ -1599,365 +1043,174 @@ const PatientDetails: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                      )}
 
-                      {/* Follow-up Consultation */}
-                      <div className="relative">
-                        <div className="flex items-start">
-                          {/* Timeline Node */}
-                          <div className="relative z-10 flex-shrink-0">
-                            <div className="w-12 h-12 bg-green-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                              <UserIcon className="w-5 h-5 text-white" />
-                            </div>
-                          </div>
-
-                          {/* Content Card */}
-                          <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
-                            {/* Collapsed View */}
-                            <div className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <h4 className="text-xl font-semibold text-gray-900">
-                                    Follow-up Consultation
-                                  </h4>
-                                  <p className="text-sm text-gray-600 mt-1">
-                                    Patient returned for follow-up regarding
-                                    diabetes management and blood pressure
-                                    control.
-                                  </p>
-                                </div>
-                                <div className="flex items-center space-x-3 ml-4">
-                                  <div className="text-right">
-                                    <div className="text-sm font-medium text-gray-900">
-                                      April 12, 2024
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      2:30 PM
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() =>
-                                      setExpandedTimeline(
-                                        expandedTimeline === "followup"
-                                          ? null
-                                          : "followup"
-                                      )
-                                    }
-                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                                  >
-                                    {expandedTimeline === "followup" ? (
-                                      <ChevronUp className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronDown className="w-4 h-4" />
-                                    )}
-                                  </button>
+                        {/* Dynamic Timeline Entries */}
+                        {timelineData.map((entry, index) => (
+                          <div key={index} className="relative">
+                            <div className="flex items-start">
+                              {/* Timeline Node */}
+                              <div className="relative z-10 flex-shrink-0">
+                                <div
+                                  className={`w-12 h-12 rounded-full border-4 border-white shadow-lg flex items-center justify-center ${
+                                    entry.visitType === "initial"
+                                      ? "bg-blue-500"
+                                      : entry.visitType === "follow-up"
+                                      ? "bg-green-500"
+                                      : entry.visitType === "emergency"
+                                      ? "bg-red-500"
+                                      : entry.visitType === "consultation"
+                                      ? "bg-purple-500"
+                                      : entry.visitType === "procedure"
+                                      ? "bg-orange-500"
+                                      : "bg-gray-500"
+                                  }`}
+                                >
+                                  <UserIcon className="w-5 h-5 text-white" />
                                 </div>
                               </div>
-                            </div>
 
-                            {/* Expanded Details */}
-                            {expandedTimeline === "followup" && (
-                              <div className="border-t border-gray-100 p-4 bg-gray-50">
-                                <div className="space-y-4">
-                                  <div className="flex items-center space-x-2">
-                                    <UserIcon className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm font-medium text-gray-700">
-                                      Consulted: Dr. Michael Chen
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-gray-600">
-                                    Blood glucose levels improved with current
-                                    medication. Blood pressure remains elevated
-                                    at 140/90. Recommended lifestyle
-                                    modifications including diet changes and
-                                    increased physical activity. Prescribed
-                                    Metformin dosage adjustment and added
-                                    Lisinopril for blood pressure management.
-                                  </p>
-                                  <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
-                                    <span className="flex items-center space-x-1">
-                                      <Clock className="w-3 h-3" />
-                                      <span>Duration: 45 minutes</span>
-                                    </span>
-                                    <span className="flex items-center space-x-1">
-                                      <FileText className="w-3 h-3" />
-                                      <span>2 documents uploaded</span>
-                                    </span>
+                              {/* Content Card */}
+                              <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
+                                {/* Collapsed View */}
+                                <div className="p-4">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <h4 className="text-xl font-semibold text-gray-900">
+                                        {entry.visitType
+                                          .charAt(0)
+                                          .toUpperCase() +
+                                          entry.visitType
+                                            .slice(1)
+                                            .replace("-", " ")}{" "}
+                                        Visit
+                                      </h4>
+                                      <p className="text-sm text-gray-600 mt-1">
+                                        {entry.diagnosis ||
+                                          entry.notes ||
+                                          "Visit details not specified"}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center space-x-3 ml-4">
+                                      <div className="text-right">
+                                        <div className="text-sm font-medium text-gray-900">
+                                          {formatDate(entry.visitDate)}
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          {entry.doctor?.firstName}{" "}
+                                          {entry.doctor?.lastName}
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() =>
+                                          setExpandedTimeline(
+                                            expandedTimeline ===
+                                              `entry-${index}`
+                                              ? null
+                                              : `entry-${index}`
+                                          )
+                                        }
+                                        className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                      >
+                                        {expandedTimeline ===
+                                        `entry-${index}` ? (
+                                          <ChevronUp className="w-4 h-4" />
+                                        ) : (
+                                          <ChevronDown className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
+
+                                {/* Expanded Details */}
+                                {expandedTimeline === `entry-${index}` && (
+                                  <div className="border-t border-gray-100 p-4 bg-gray-50">
+                                    <div className="space-y-4">
+                                      {entry.doctor && (
+                                        <div className="flex items-center space-x-2">
+                                          <UserIcon className="w-4 h-4 text-gray-500" />
+                                          <span className="text-sm font-medium text-gray-700">
+                                            Doctor: {entry.doctor.firstName}{" "}
+                                            {entry.doctor.lastName}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {entry.diagnosis && (
+                                        <div>
+                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                            Diagnosis:
+                                          </h5>
+                                          <p className="text-sm text-gray-600">
+                                            {entry.diagnosis}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {entry.symptoms &&
+                                        entry.symptoms.length > 0 && (
+                                          <div>
+                                            <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                              Symptoms:
+                                            </h5>
+                                            <p className="text-sm text-gray-600">
+                                              {entry.symptoms.join(", ")}
+                                            </p>
+                                          </div>
+                                        )}
+                                      {entry.treatment && (
+                                        <div>
+                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                            Treatment:
+                                          </h5>
+                                          <p className="text-sm text-gray-600">
+                                            {entry.treatment}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {entry.medications &&
+                                        entry.medications.length > 0 && (
+                                          <div>
+                                            <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                              Medications:
+                                            </h5>
+                                            <p className="text-sm text-gray-600">
+                                              {entry.medications.join(", ")}
+                                            </p>
+                                          </div>
+                                        )}
+                                      {entry.notes && (
+                                        <div>
+                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                            Notes:
+                                          </h5>
+                                          <p className="text-sm text-gray-600">
+                                            {entry.notes}
+                                          </p>
+                                        </div>
+                                      )}
+                                      <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
+                                        <span className="flex items-center space-x-1">
+                                          <Clock className="w-3 h-3" />
+                                          <span>
+                                            Visit Type: {entry.visitType}
+                                          </span>
+                                        </span>
+                                        <span className="flex items-center space-x-1">
+                                          <UserIcon className="w-3 h-3" />
+                                          <span>
+                                            Created:{" "}
+                                            {formatDate(entry.createdAt)}
+                                          </span>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
-
-                      {/* Lab Results Review */}
-                      <div className="relative">
-                        <div className="flex items-start">
-                          {/* Timeline Node */}
-                          <div className="relative z-10 flex-shrink-0">
-                            <div className="w-12 h-12 bg-blue-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                              <FileText className="w-5 h-5 text-white" />
-                            </div>
-                          </div>
-
-                          {/* Content Card */}
-                          <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
-                            {/* Collapsed View */}
-                            <div className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <h4 className="text-xl font-semibold text-gray-900">
-                                    Lab Results Review
-                                  </h4>
-                                  <p className="text-sm text-gray-600 mt-1">
-                                    Review of blood work and diagnostic tests
-                                    ordered during initial consultation.
-                                  </p>
-                                </div>
-                                <div className="flex items-center space-x-3 ml-4">
-                                  <div className="text-right">
-                                    <div className="text-sm font-medium text-gray-900">
-                                      March 28, 2024
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      10:15 AM
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() =>
-                                      setExpandedTimeline(
-                                        expandedTimeline === "lab"
-                                          ? null
-                                          : "lab"
-                                      )
-                                    }
-                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                                  >
-                                    {expandedTimeline === "lab" ? (
-                                      <ChevronUp className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronDown className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Expanded Details */}
-                            {expandedTimeline === "lab" && (
-                              <div className="border-t border-gray-100 p-4 bg-gray-50">
-                                <div className="space-y-4">
-                                  <div className="flex items-center space-x-2">
-                                    <UserIcon className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm font-medium text-gray-700">
-                                      Consulted: Dr. Emily Wilson
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-gray-600">
-                                    Blood glucose: 180 mg/dL (elevated), HbA1c:
-                                    7.2% (diabetes range). Cholesterol panel
-                                    shows high LDL at 160 mg/dL. Kidney function
-                                    normal. Recommended starting Metformin 500mg
-                                    twice daily and dietary consultation.
-                                  </p>
-                                  <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
-                                    <span className="flex items-center space-x-1">
-                                      <Clock className="w-3 h-3" />
-                                      <span>Duration: 30 minutes</span>
-                                    </span>
-                                    <span className="flex items-center space-x-1">
-                                      <FileText className="w-3 h-3" />
-                                      <span>5 documents uploaded</span>
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Initial Consultation */}
-                      <div className="relative">
-                        <div className="flex items-start">
-                          {/* Timeline Node */}
-                          <div className="relative z-10 flex-shrink-0">
-                            <div className="w-12 h-12 bg-purple-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                              <Stethoscope className="w-5 h-5 text-white" />
-                            </div>
-                          </div>
-
-                          {/* Content Card */}
-                          <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
-                            {/* Collapsed View */}
-                            <div className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <h4 className="text-xl font-semibold text-gray-900">
-                                    Initial Consultation
-                                  </h4>
-                                  <p className="text-sm text-gray-600 mt-1">
-                                    First visit for evaluation of diabetes
-                                    symptoms and general health assessment.
-                                  </p>
-                                </div>
-                                <div className="flex items-center space-x-3 ml-4">
-                                  <div className="text-right">
-                                    <div className="text-sm font-medium text-gray-900">
-                                      March 15, 2024
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      9:00 AM
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() =>
-                                      setExpandedTimeline(
-                                        expandedTimeline === "initial"
-                                          ? null
-                                          : "initial"
-                                      )
-                                    }
-                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                                  >
-                                    {expandedTimeline === "initial" ? (
-                                      <ChevronUp className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronDown className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Expanded Details */}
-                            {expandedTimeline === "initial" && (
-                              <div className="border-t border-gray-100 p-4 bg-gray-50">
-                                <div className="space-y-4">
-                                  <div className="flex items-center space-x-2">
-                                    <UserIcon className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm font-medium text-gray-700">
-                                      Consulted: Dr. Michael Chen
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-gray-600">
-                                    Patient presented with frequent urination,
-                                    increased thirst, and fatigue. Family
-                                    history of diabetes noted. Physical
-                                    examination revealed elevated blood
-                                    pressure. Ordered comprehensive blood work
-                                    including glucose, HbA1c, and lipid panel.
-                                    Scheduled follow-up for results review.
-                                  </p>
-                                  <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
-                                    <span className="flex items-center space-x-1">
-                                      <Clock className="w-3 h-3" />
-                                      <span>Duration: 60 minutes</span>
-                                    </span>
-                                    <span className="flex items-center space-x-1">
-                                      <FileText className="w-3 h-3" />
-                                      <span>3 documents uploaded</span>
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Patient Registration */}
-                      <div className="relative">
-                        <div className="flex items-start">
-                          {/* Timeline Node */}
-                          <div className="relative z-10 flex-shrink-0">
-                            <div className="w-12 h-12 bg-gray-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                              <UserIcon className="w-5 h-5 text-white" />
-                            </div>
-                          </div>
-
-                          {/* Content Card */}
-                          <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
-                            {/* Collapsed View */}
-                            <div className="p-4">
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <h4 className="text-xl font-semibold text-gray-900">
-                                    Patient Registration
-                                  </h4>
-                                  <p className="text-sm text-gray-600 mt-1">
-                                    New patient registration and initial medical
-                                    history collection.
-                                  </p>
-                                </div>
-                                <div className="flex items-center space-x-3 ml-4">
-                                  <div className="text-right">
-                                    <div className="text-sm font-medium text-gray-900">
-                                      {formatDate(patient.createdAt)}
-                                    </div>
-                                    <div className="text-xs text-gray-500">
-                                      Registration
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() =>
-                                      setExpandedTimeline(
-                                        expandedTimeline === "registration"
-                                          ? null
-                                          : "registration"
-                                      )
-                                    }
-                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                                  >
-                                    {expandedTimeline === "registration" ? (
-                                      <ChevronUp className="w-4 h-4" />
-                                    ) : (
-                                      <ChevronDown className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Expanded Details */}
-                            {expandedTimeline === "registration" && (
-                              <div className="border-t border-gray-100 p-4 bg-gray-50">
-                                <div className="space-y-4">
-                                  <div className="flex items-center space-x-2">
-                                    <UserIcon className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm font-medium text-gray-700">
-                                      Registered by: System Admin
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-gray-600">
-                                    Patient {patient.firstName}{" "}
-                                    {patient.lastName} was registered in the
-                                    system. Initial demographic information,
-                                    contact details, and basic medical history
-                                    were collected. Insurance information
-                                    verified and patient assigned to Dr. Michael
-                                    Chen for primary care.
-                                  </p>
-                                  <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
-                                    <span className="flex items-center space-x-1">
-                                      <UserIcon className="w-3 h-3" />
-                                      <span>
-                                        Patient ID: {patient.patientId}
-                                      </span>
-                                    </span>
-                                    <span className="flex items-center space-x-1">
-                                      <UserIcon className="w-3 h-3" />
-                                      <span>Assigned to: Dr. Michael Chen</span>
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2035,67 +1288,53 @@ const PatientDetails: React.FC = () => {
                                   <input
                                     type="checkbox"
                                     checked={selectedDocuments.has(
-                                      file.fileKey
+                                      file.fileKey || file.originalName
                                     )}
-                                    onChange={() =>
-                                      toggleDocumentSelection(file.fileKey)
-                                    }
+                                    onChange={(e) => {
+                                      const key =
+                                        file.fileKey || file.originalName;
+                                      if (e.target.checked) {
+                                        setSelectedDocuments(
+                                          new Set([
+                                            ...Array.from(selectedDocuments),
+                                            key,
+                                          ])
+                                        );
+                                      } else {
+                                        const newSet = new Set(
+                                          selectedDocuments
+                                        );
+                                        newSet.delete(key);
+                                        setSelectedDocuments(newSet);
+                                      }
+                                    }}
                                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                                   />
-                                  {getFileIcon(
-                                    file.originalName,
-                                    file.documentType
-                                  )}
+                                  <FileText className="w-5 h-5 text-gray-400" />
                                   <div>
-                                    <p className="text-base font-medium text-gray-900">
+                                    <p className="text-sm font-medium text-gray-900">
                                       {file.originalName}
                                     </p>
                                     <p className="text-xs text-gray-500">
-                                      {file.fileSize
-                                        ? `${(
-                                            file.fileSize /
-                                            1024 /
-                                            1024
-                                          ).toFixed(2)} MB`
-                                        : "Unknown size"}
+                                      {file.contentType} •{" "}
+                                      {formatFileSize(file.fileSize)}
                                     </p>
-                                    {file.createdAt && (
-                                      <p className="text-xs text-gray-400">
-                                        Uploaded {formatDate(file.createdAt)}
-                                      </p>
-                                    )}
                                   </div>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <button
-                                    onClick={() => triggerAIAnalysis(file._id)}
-                                    disabled={isAnalyzing}
-                                    className="p-2 text-gray-400 hover:text-purple-600 rounded-md hover:bg-purple-50 disabled:opacity-50"
-                                    title="Analyze with AI"
-                                  >
-                                    <Brain className="w-4 h-4" />
-                                  </button>
-                                  <button
                                     onClick={() =>
-                                      handleFileDownload(
-                                        file.fileKey,
-                                        file.originalName
-                                      )
+                                      handleDownloadFile(file.fileKey)
                                     }
-                                    className="p-2 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100"
-                                    title="Download"
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
                                   >
                                     <Download className="w-4 h-4" />
                                   </button>
                                   <button
                                     onClick={() =>
-                                      handleFileDelete(
-                                        file.fileKey,
-                                        file.originalName
-                                      )
+                                      handleDeleteFile(file.fileKey)
                                     }
-                                    className="p-2 text-gray-400 hover:text-red-600 rounded-md hover:bg-red-50"
-                                    title="Delete"
+                                    className="p-1 text-gray-400 hover:text-red-600 rounded"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -2122,16 +1361,6 @@ const PatientDetails: React.FC = () => {
                         </div>
                         <div className="flex items-center space-x-3">
                           <button
-                            onClick={handleBulkDeleteAnalysisReports}
-                            disabled={selectedAnalysisReports.size === 0}
-                            className="flex items-center space-x-2 px-3 py-2 text-sm font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed bg-red-50 text-red-700 hover:bg-red-100 border border-red-200"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            <span>
-                              Delete Selected ({selectedAnalysisReports.size})
-                            </span>
-                          </button>
-                          <button
                             onClick={() =>
                               setExpandedAnalysisReports(
                                 !expandedAnalysisReports
@@ -2151,19 +1380,20 @@ const PatientDetails: React.FC = () => {
 
                     {expandedAnalysisReports && (
                       <div className="p-6">
+                        {/* AI Analysis Reports */}
                         {isLoadingAnalysis ? (
                           <div className="flex items-center justify-center py-12">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                           </div>
                         ) : aiAnalysisReportFiles.length === 0 ? (
                           <div className="text-center py-12">
-                            <Brain className="mx-auto h-12 w-12 text-gray-400" />
+                            <FileText className="mx-auto h-12 w-12 text-gray-400" />
                             <h3 className="mt-2 text-sm font-medium text-gray-900">
                               No AI analysis reports
                             </h3>
                             <p className="mt-1 text-sm text-gray-500">
-                              Run AI analysis on uploaded documents to see
-                              reports here.
+                              AI analysis reports will appear here after
+                              analysis.
                             </p>
                           </div>
                         ) : (
@@ -2171,132 +1401,57 @@ const PatientDetails: React.FC = () => {
                             {aiAnalysisReportFiles.map((file, index) => (
                               <div
                                 key={index}
-                                className="p-4 bg-gray-50 rounded-lg"
+                                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
                               >
-                                <div className="flex items-center justify-between mb-3">
-                                  <div className="flex items-center space-x-3">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedAnalysisReports.has(
-                                        file._id
-                                      )}
-                                      onChange={() =>
-                                        toggleAnalysisReportSelection(file._id)
-                                      }
-                                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                    />
-                                    {getFileIcon(
-                                      file.originalName || "AI Analysis Report",
-                                      file.documentType
-                                    )}
-                                    <div>
-                                      <h4 className="text-base font-medium text-gray-900">
-                                        {file.originalName ||
-                                          "AI Analysis Report"}
-                                      </h4>
-                                      <p className="text-xs text-gray-500">
-                                        Generated {formatDate(file.createdAt)}
+                                <div className="flex items-center space-x-3">
+                                  <FileText className="w-5 h-5 text-gray-400" />
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">
+                                      {file.originalName}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {file.contentType} •{" "}
+                                      {formatFileSize(file.fileSize)}
+                                    </p>
+                                    {file.createdAt && (
+                                      <p className="text-xs text-gray-400">
+                                        Uploaded {formatDate(file.createdAt)}
                                       </p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    {/* Download Button */}
-                                    <button
-                                      onClick={() => {
-                                        console.log(
-                                          "🔍 Download button clicked for file:",
-                                          {
-                                            fileId: file._id,
-                                            fileKey: file.fileKey,
-                                            originalName: file.originalName,
-                                            contentType: file.contentType,
-                                            documentType: file.documentType,
-                                            status: file.status,
-                                          }
-                                        );
-                                        handleFileDownload(
-                                          file.fileKey,
-                                          file.originalName ||
-                                            "AI Analysis Report"
-                                        );
-                                      }}
-                                      className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors"
-                                      title="Download"
-                                    >
-                                      <Download className="w-4 h-4" />
-                                    </button>
-
-                                    {/* View PDF Button - Only show for PDF files */}
-                                    {file.contentType === "application/pdf" && (
-                                      <button
-                                        onClick={() =>
-                                          handleViewPDF(file.fileKey)
-                                        }
-                                        className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-md transition-colors"
-                                        title="View PDF"
-                                      >
-                                        <Eye className="w-4 h-4" />
-                                      </button>
-                                    )}
-
-                                    {/* Expand button - Only show for non-PDF files */}
-                                    {file.contentType !== "application/pdf" && (
-                                      <button
-                                        onClick={() =>
-                                          setSelectedFile(
-                                            selectedFile === file ? null : file
-                                          )
-                                        }
-                                        className="p-1 text-gray-400 hover:text-gray-600"
-                                      >
-                                        {selectedFile === file ? (
-                                          <ChevronUp className="w-4 h-4" />
-                                        ) : (
-                                          <ChevronDown className="w-4 h-4" />
-                                        )}
-                                      </button>
                                     )}
                                   </div>
                                 </div>
-
-                                {selectedFile === file &&
-                                  file.contentType !== "application/pdf" && (
-                                    <div className="mt-3 p-3 bg-white rounded border border-gray-200">
-                                      <div className="text-sm text-gray-700">
-                                        AI Analysis Report - {file.originalName}
-                                      </div>
-                                    </div>
-                                  )}
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => triggerAIAnalysis(file._id)}
+                                    disabled={isAnalyzing}
+                                    className="p-2 text-gray-400 hover:text-purple-600 rounded-md hover:bg-purple-50 disabled:opacity-50"
+                                    title="Analyze with AI"
+                                  >
+                                    <Brain className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleDownloadFile(file.fileKey)
+                                    }
+                                    className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleDeleteFile(file.fileKey)
+                                    }
+                                    className="p-1 text-gray-400 hover:text-red-600 rounded"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
                     )}
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "diagnosis" && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-2xl font-semibold text-gray-900">
-                      AI Diagnosis
-                    </h3>
-                    <button
-                      onClick={uploadFilesAndAnalyze}
-                      disabled={
-                        uploadedFiles.length === 0 || isUploading || isAnalyzing
-                      }
-                      className="btn-primary flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Brain className="w-4 h-4" />
-                      <span>
-                        {isUploading || isAnalyzing
-                          ? "Analyzing..."
-                          : "Run New Analysis"}
-                      </span>
-                    </button>
                   </div>
 
                   {/* File Upload Section */}
@@ -2307,162 +1462,21 @@ const PatientDetails: React.FC = () => {
                       </h4>
                       <label className="btn-secondary flex items-center space-x-2 cursor-pointer">
                         <Upload className="w-4 h-4" />
-                        <span>Select Files</span>
-                        <input
-                          type="file"
-                          multiple
-                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.txt"
-                          onChange={handleFileUpload}
-                          className="hidden"
-                        />
+                        <span>Upload Document</span>
                       </label>
                     </div>
-
-                    {/* Uploaded Files List */}
-                    {uploadedFiles.length > 0 && (
-                      <div className="space-y-3">
-                        <h5 className="text-base font-medium text-gray-700">
-                          Selected Files:
-                        </h5>
-                        {uploadedFiles.map((file, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                          >
-                            <div className="flex items-center space-x-3">
-                              {getFileIcon(file.name)}
-                              <div>
-                                <p className="text-base font-medium text-gray-900">
-                                  {file.name}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                  {(file.size / 1024 / 1024).toFixed(2)} MB
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {uploadProgress[file.name] !== undefined && (
-                                <div className="flex items-center space-x-2">
-                                  <Loader className="w-4 h-4 animate-spin text-primary-600" />
-                                  <span className="text-xs text-gray-500">
-                                    {uploadProgress[file.name]}%
-                                  </span>
-                                </div>
-                              )}
-                              <button
-                                onClick={() => removeFile(index)}
-                                className="p-1 text-gray-400 hover:text-red-500"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Upload Progress */}
-                    {isUploading && (
-                      <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <Loader className="w-4 h-4 animate-spin text-blue-600" />
-                          <span className="text-sm font-medium text-blue-800">
-                            Uploading files...
-                          </span>
-                        </div>
-                        <div className="w-full bg-blue-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                            style={{
-                              width: `${
-                                Object.values(uploadProgress).reduce(
-                                  (a, b) => a + b,
-                                  0
-                                ) / Object.keys(uploadProgress).length
-                              }%`,
-                            }}
-                          ></div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Cloud Upload Progress */}
-                    {isUploadingToCloud && (
-                      <div className="mt-4 p-4 bg-green-50 rounded-lg">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <Loader className="w-4 h-4 animate-spin text-green-600" />
-                          <span className="text-sm font-medium text-green-800">
-                            Uploading to cloud storage...
-                          </span>
-                        </div>
-                        <div className="space-y-2">
-                          {uploadedFiles.map((file, index) => (
-                            <div key={index} className="space-y-1">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="text-green-700">
-                                  {file.name}
-                                </span>
-                                <span className="text-green-600">
-                                  {cloudUploadProgress[file.name] || 0}%
-                                </span>
-                              </div>
-                              <div className="w-full bg-green-200 rounded-full h-1">
-                                <div
-                                  className="bg-green-600 h-1 rounded-full transition-all duration-300"
-                                  style={{
-                                    width: `${
-                                      cloudUploadProgress[file.name] || 0
-                                    }%`,
-                                  }}
-                                ></div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Analysis Progress */}
-                    {isAnalyzing && !isUploading && (
-                      <div className="mt-4 p-4 bg-purple-50 rounded-lg">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <Brain className="w-4 h-4 animate-pulse text-purple-600" />
-                          <span className="text-sm font-medium text-purple-800">
-                            Analyzing with AI models...
-                          </span>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center space-x-2">
-                            <Loader className="w-4 h-4 animate-spin text-purple-600" />
-                            <span className="text-xs text-gray-600">
-                              Document analysis and model selection
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Loader className="w-4 h-4 animate-spin text-purple-600" />
-                            <span className="text-xs text-gray-600">
-                              Text extraction and summarization
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Loader className="w-4 h-4 animate-spin text-purple-600" />
-                            <span className="text-xs text-gray-600">
-                              Medical entity recognition
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Loader className="w-4 h-4 animate-spin text-purple-600" />
-                            <span className="text-xs text-gray-600">
-                              Generating final AI report
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-xs text-purple-600 mt-2">
-                          This may take 30-60 seconds depending on document
-                          complexity...
-                        </p>
-                      </div>
-                    )}
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tiff,.dcm"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="file-upload"
+                    />
+                    <div className="text-sm text-gray-500">
+                      Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG, TIFF,
+                      DCM
+                    </div>
                   </div>
 
                   {/* AI Analysis Results */}
@@ -2474,286 +1488,163 @@ const PatientDetails: React.FC = () => {
                           <h4 className="text-lg font-semibold text-gray-900 mb-4">
                             AI Analysis Results
                           </h4>
-                          {aiAnalyses.map((analysis) => (
+                          {aiAnalyses.map((analysis, index) => (
                             <div
-                              key={analysis._id}
+                              key={index}
                               className="border border-gray-200 rounded-lg p-4"
                             >
                               <div className="flex items-center justify-between mb-3">
-                                <h5 className="font-medium text-gray-900">
-                                  {analysis.fileName}
+                                <h5 className="text-md font-medium text-gray-900">
+                                  {analysis.analysisType || "Medical Analysis"}
                                 </h5>
                                 <span
-                                  className={`px-2 py-1 text-xs rounded-full ${
+                                  className={`px-2 py-1 text-xs font-medium rounded-full ${
                                     analysis.status === "completed"
                                       ? "bg-green-100 text-green-800"
                                       : analysis.status === "processing"
-                                      ? "bg-blue-100 text-blue-800"
+                                      ? "bg-yellow-100 text-yellow-800"
                                       : "bg-red-100 text-red-800"
                                   }`}
                                 >
                                   {analysis.status}
                                 </span>
                               </div>
-
-                              {analysis.status === "completed" &&
-                                analysis.analysisResult && (
-                                  <div className="space-y-4">
-                                    {/* File Info Row */}
-                                    <div className="flex items-center justify-between text-sm text-gray-600">
-                                      {analysis.analysisResult.confidence && (
-                                        <div className="flex items-center space-x-2">
-                                          <span className="font-medium">
-                                            Confidence:
-                                          </span>
-                                          <span
-                                            className={`px-2 py-1 text-xs rounded-full ${
-                                              analysis.analysisResult
-                                                .confidence > 0.8
-                                                ? "bg-green-100 text-green-800"
-                                                : analysis.analysisResult
-                                                    .confidence > 0.6
-                                                ? "bg-yellow-100 text-yellow-800"
-                                                : "bg-red-100 text-red-800"
-                                            }`}
-                                          >
-                                            {(
-                                              analysis.analysisResult
-                                                .confidence * 100
-                                            ).toFixed(1)}
-                                            %
-                                          </span>
-                                        </div>
+                              {analysis.analysisResult?.summary && (
+                                <div className="mb-3">
+                                  <h6 className="text-sm font-medium text-gray-700 mb-1">
+                                    Summary:
+                                  </h6>
+                                  <p className="text-sm text-gray-600">
+                                    {analysis.analysisResult.summary}
+                                  </p>
+                                </div>
+                              )}
+                              {analysis.analysisResult?.keyFindings &&
+                                analysis.analysisResult.keyFindings.length >
+                                  0 && (
+                                  <div className="mb-3">
+                                    <h6 className="text-sm font-medium text-gray-700 mb-1">
+                                      Key Findings:
+                                    </h6>
+                                    <ul className="text-sm text-gray-600 list-disc list-inside">
+                                      {analysis.analysisResult.keyFindings.map(
+                                        (finding, idx) => (
+                                          <li key={idx}>{finding}</li>
+                                        )
                                       )}
-                                      {analysis.analysisResult
-                                        .processingTime && (
-                                        <div className="text-xs text-gray-500">
-                                          Processed in{" "}
-                                          {Math.round(
-                                            analysis.analysisResult
-                                              .processingTime / 1000
-                                          )}
-                                          s
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* AI Analysis Summary */}
-                                    {analysis.analysisResult.summary && (
-                                      <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                          <h6 className="text-sm font-medium text-gray-700">
-                                            🩺 AI Analysis
-                                          </h6>
-                                        </div>
-                                        <div className="bg-gray-50 rounded-lg p-4 w-full">
-                                          <div className="text-sm text-gray-700 leading-relaxed max-h-96 overflow-y-auto pr-2">
-                                            <ReactMarkdown
-                                              remarkPlugins={[remarkGfm]}
-                                              components={{
-                                                h1: ({ node, ...props }) => (
-                                                  <h1
-                                                    className="text-lg font-bold text-gray-900 mb-3"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                h2: ({ node, ...props }) => (
-                                                  <h2
-                                                    className="text-base font-semibold text-gray-800 mb-2"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                h3: ({ node, ...props }) => (
-                                                  <h3
-                                                    className="text-sm font-semibold text-gray-700 mb-2"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                h4: ({ node, ...props }) => (
-                                                  <h4
-                                                    className="text-sm font-medium text-gray-700 mb-1"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                h5: ({ node, ...props }) => (
-                                                  <h5
-                                                    className="text-sm font-medium text-gray-600 mb-1"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                h6: ({ node, ...props }) => (
-                                                  <h6
-                                                    className="text-sm font-medium text-gray-600 mb-1"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                p: ({ node, ...props }) => (
-                                                  <p
-                                                    className="mb-2 text-gray-700"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                ul: ({ node, ...props }) => (
-                                                  <ul
-                                                    className="list-disc list-inside mb-2 space-y-1"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                ol: ({ node, ...props }) => (
-                                                  <ol
-                                                    className="list-decimal list-inside mb-2 space-y-1"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                li: ({ node, ...props }) => (
-                                                  <li
-                                                    className="text-gray-700"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                strong: ({
-                                                  node,
-                                                  ...props
-                                                }) => (
-                                                  <strong
-                                                    className="font-semibold text-gray-900"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                em: ({ node, ...props }) => (
-                                                  <em
-                                                    className="italic text-gray-600"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                blockquote: ({
-                                                  node,
-                                                  ...props
-                                                }) => (
-                                                  <blockquote
-                                                    className="border-l-4 border-blue-200 pl-4 py-2 bg-blue-50 text-gray-700 italic"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                code: ({ node, ...props }) => (
-                                                  <code
-                                                    className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono text-gray-800"
-                                                    {...props}
-                                                  />
-                                                ),
-                                                pre: ({ node, ...props }) => (
-                                                  <pre
-                                                    className="bg-gray-100 p-2 rounded text-sm font-mono text-gray-800 overflow-x-auto"
-                                                    {...props}
-                                                  />
-                                                ),
-                                              }}
-                                            >
-                                              {analysis.analysisResult
-                                                .rawResponse ||
-                                                analysis.analysisResult.summary}
-                                            </ReactMarkdown>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Key Findings Section */}
-                                    {analysis.analysisResult.keyFindings &&
-                                      analysis.analysisResult.keyFindings
-                                        .length > 0 && (
-                                        <div>
-                                          <div className="flex items-center justify-between mb-2">
-                                            <h6 className="text-sm font-medium text-gray-700">
-                                              🔍 Key Findings
-                                            </h6>
-                                          </div>
-                                          <div className="bg-blue-50 rounded-lg p-4">
-                                            <ul className="space-y-2">
-                                              {analysis.analysisResult.keyFindings.map(
-                                                (finding, index) => (
-                                                  <li
-                                                    key={index}
-                                                    className="flex items-start space-x-2"
-                                                  >
-                                                    <span className="text-blue-600 mt-1">
-                                                      •
-                                                    </span>
-                                                    <span className="text-sm text-gray-700">
-                                                      {finding}
-                                                    </span>
-                                                  </li>
-                                                )
-                                              )}
-                                            </ul>
-                                          </div>
-                                        </div>
-                                      )}
-
-                                    {/* Recommendations Section */}
-                                    {analysis.analysisResult.recommendations &&
-                                      analysis.analysisResult.recommendations
-                                        .length > 0 && (
-                                        <div>
-                                          <div className="flex items-center justify-between mb-2">
-                                            <h6 className="text-sm font-medium text-gray-700">
-                                              💡 Recommendations
-                                            </h6>
-                                          </div>
-                                          <div className="bg-green-50 rounded-lg p-4">
-                                            <ul className="space-y-2">
-                                              {analysis.analysisResult.recommendations.map(
-                                                (recommendation, index) => (
-                                                  <li
-                                                    key={index}
-                                                    className="flex items-start space-x-2"
-                                                  >
-                                                    <span className="text-green-600 mt-1">
-                                                      •
-                                                    </span>
-                                                    <span className="text-sm text-gray-700">
-                                                      {recommendation}
-                                                    </span>
-                                                  </li>
-                                                )
-                                              )}
-                                            </ul>
-                                          </div>
-                                        </div>
-                                      )}
+                                    </ul>
                                   </div>
                                 )}
-
-                              {analysis.status === "processing" && (
-                                <div className="flex items-center space-x-2 text-blue-600">
-                                  <Loader className="w-4 h-4 animate-spin" />
-                                  <span className="text-sm">Processing...</span>
-                                </div>
-                              )}
-
-                              {analysis.status === "failed" && (
-                                <div className="text-red-600 text-sm">
-                                  Analysis failed: {analysis.errorMessage}
-                                </div>
-                              )}
+                              {analysis.analysisResult?.recommendations &&
+                                analysis.analysisResult.recommendations.length >
+                                  0 && (
+                                  <div className="mb-3">
+                                    <h6 className="text-sm font-medium text-gray-700 mb-1">
+                                      Recommendations:
+                                    </h6>
+                                    <ul className="text-sm text-gray-600 list-disc list-inside">
+                                      {analysis.analysisResult.recommendations.map(
+                                        (rec, idx) => (
+                                          <li key={idx}>{rec}</li>
+                                        )
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                              <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
+                                <span>
+                                  Analyzed: {formatDate(analysis.createdAt)}
+                                </span>
+                                {analysis.analysisResult?.confidence && (
+                                  <span>
+                                    Confidence:{" "}
+                                    {analysis.analysisResult.confidence}%
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
                       )}
 
-                      {/* No AI Analysis Results */}
+                      {/* Loading State */}
+                      {isLoadingAnalysis && (
+                        <div className="text-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mx-auto mb-4"></div>
+                          <p className="text-gray-600">
+                            Analyzing documents...
+                          </p>
+                        </div>
+                      )}
+
+                      {/* No Analysis State */}
                       {!isLoadingAnalysis && aiAnalyses.length === 0 && (
                         <div className="text-center py-8">
                           <Brain className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                           <h4 className="text-lg font-medium text-gray-900 mb-2">
-                            No AI Analysis Results
+                            No AI Analysis Yet
                           </h4>
-                          <p className="text-sm text-gray-600 mb-4">
-                            Upload files and run AI analysis to see detailed
-                            insights here.
+                          <p className="text-gray-600">
+                            Upload documents and click "Analyze with AI" to get
+                            AI-powered medical analysis.
                           </p>
                         </div>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "diagnosis" && (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                      Patient Diagnosis
+                    </h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Primary Diagnosis
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="Enter primary diagnosis"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Secondary Diagnosis
+                        </label>
+                        <input
+                          type="text"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="Enter secondary diagnosis"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Treatment Plan
+                        </label>
+                        <textarea
+                          rows={4}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="Enter treatment plan"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Notes
+                        </label>
+                        <textarea
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          placeholder="Enter additional notes"
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <button className="btn-primary">Save Diagnosis</button>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -373,16 +373,13 @@ router.put(
 
       const frontDeskCoordinatorId = req.user._id;
 
-      // Find patient and verify ownership
-      const patient = await Patient.findOne({
-        _id: patientId,
-        createdBy: frontDeskCoordinatorId,
-      });
+      // Find patient by ID (do not restrict to creator)
+      const patient = await Patient.findById(patientId);
 
       if (!patient) {
         return res.status(404).json({
           success: false,
-          message: "Patient not found or you don't have access",
+          message: "Patient not found",
         });
       }
 
@@ -510,16 +507,13 @@ router.put(
 
       const frontDeskCoordinatorId = req.user._id;
 
-      // Find patient and verify ownership
-      const patient = await Patient.findOne({
-        _id: patientId,
-        createdBy: frontDeskCoordinatorId,
-      });
+      // Find patient by ID (do not restrict to creator)
+      const patient = await Patient.findById(patientId);
 
       if (!patient) {
         return res.status(404).json({
           success: false,
-          message: "Patient not found or you don't have access",
+          message: "Patient not found",
         });
       }
 
