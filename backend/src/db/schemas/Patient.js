@@ -183,6 +183,16 @@ const patientSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    // New visits array for detailed visit records
+    visits: [
+      {
+        visitDate: { type: Date, required: true }, // date and time
+        initialDiagnosis: String, // initial diagnostic impression
+        updates: String, // updates/changes since last visit
+        summary: String, // summary of diagnostics done and overall outcome
+        medicationsGiven: [String], // list of medications provided/prescribed in this visit
+      },
+    ],
     timeline: [
       {
         visitDate: { type: Date, required: true },
@@ -249,5 +259,6 @@ patientSchema.index({ status: 1 });
 patientSchema.index({ createdAt: -1 });
 patientSchema.index({ "timeline.visitDate": -1 });
 patientSchema.index({ "timeline.doctor": 1 });
+patientSchema.index({ "visits.visitDate": -1 });
 
 module.exports = mongoose.model("Patient", patientSchema);

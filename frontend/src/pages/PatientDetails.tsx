@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { authAPI, uploadAPI, timelineAPI } from "../services/api";
+import { authAPI, uploadAPI, timelineAPI, visitsAPI } from "../services/api";
 import {
   Patient,
   UploadResponse,
@@ -48,7 +48,7 @@ const PatientDetails: React.FC = () => {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
-    "timeline" | "documents" | "diagnosis"
+    "timeline" | "documents" | "analysis"
   >("timeline");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -93,6 +93,68 @@ const PatientDetails: React.FC = () => {
   const [selectedAnalysis, setSelectedAnalysis] = useState<AIAnalysis | null>(
     null
   );
+  const [isAddingVisit, setIsAddingVisit] = useState<boolean>(false);
+  const [showVisitModal, setShowVisitModal] = useState<boolean>(false);
+  const [editingVisitIndex, setEditingVisitIndex] = useState<number | null>(
+    null
+  );
+  const [visitForm, setVisitForm] = useState<{
+    initialDiagnosis: string;
+    updates: string;
+    summary: string;
+    medicationsGiven: string;
+  }>({ initialDiagnosis: "", updates: "", summary: "", medicationsGiven: "" });
+  const analysisFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleUpdateVisitClick = (index: number) => {
+    const entry = timelineData[index];
+    setEditingVisitIndex(index);
+    setVisitForm({
+      initialDiagnosis: entry.initialDiagnosis || "",
+      updates: entry.updates || "",
+      summary: entry.summary || "",
+      medicationsGiven: (entry.medicationsGiven || []).join(", "),
+    });
+    setShowVisitModal(true);
+  };
+
+  const handleVisitFormChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setVisitForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveVisit = async () => {
+    if (!patient || editingVisitIndex === null) return;
+    try {
+      const payload = {
+        initialDiagnosis: visitForm.initialDiagnosis,
+        updates: visitForm.updates,
+        summary: visitForm.summary,
+        medicationsGiven: visitForm.medicationsGiven
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      };
+      const res = await visitsAPI.updateVisit(
+        patient._id,
+        editingVisitIndex,
+        payload
+      );
+      if (!res.success)
+        throw new Error(res.message || "Failed to update visit");
+      setShowVisitModal(false);
+      setEditingVisitIndex(null);
+      await loadTimelineData();
+    } catch (error) {
+      alert(
+        `Failed to save visit: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  };
 
   useEffect(() => {
     if (patientId && patientId !== undefined) {
@@ -160,20 +222,49 @@ const PatientDetails: React.FC = () => {
 
     try {
       setLoadingTimeline(true);
-      const response = await timelineAPI.getPatientTimeline(patientId);
+      // Fetch visits from new visits API
+      const response = await visitsAPI.getPatientVisits(patientId);
       if (response.success) {
-        // Sort timeline entries by visitDate in descending order (most recent first)
-        const sortedTimeline = (response.data || []).sort((a: any, b: any) => {
-          const dateA = new Date(a.visitDate).getTime();
-          const dateB = new Date(b.visitDate).getTime();
-          return dateB - dateA; // Descending order (newest first)
-        });
-        setTimelineData(sortedTimeline);
+        const visits = response.data || [];
+        // Sort by visitDate descending (newest first)
+        const sorted = visits.sort(
+          (a: any, b: any) =>
+            new Date(b.visitDate).getTime() - new Date(a.visitDate).getTime()
+        );
+        setTimelineData(sorted);
       }
     } catch (error) {
       console.error("Error loading timeline data:", error);
     } finally {
       setLoadingTimeline(false);
+    }
+  };
+
+  const handleAddVisit = async () => {
+    if (!patient || !user) return;
+    try {
+      setIsAddingVisit(true);
+      const newVisit = {
+        visitDate: new Date(),
+        initialDiagnosis: "",
+        updates: "",
+        summary: "Visit added from patient dashboard.",
+        medicationsGiven: [],
+      };
+      const res = await visitsAPI.addVisit(patient._id, newVisit);
+      if (!res.success) {
+        throw new Error(res.message || "Failed to add visit");
+      }
+      await loadTimelineData();
+    } catch (error) {
+      console.error("Error adding visit:", error);
+      alert(
+        `Error adding visit: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsAddingVisit(false);
     }
   };
 
@@ -448,6 +539,57 @@ const PatientDetails: React.FC = () => {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     setUploadedFiles((prev) => [...prev, ...files]);
+    if (analysisFileInputRef.current) analysisFileInputRef.current.value = "";
+  };
+
+  const handleRemoveSelectedFile = (name: string) => {
+    setUploadedFiles((prev) => prev.filter((f) => f.name !== name));
+    setUploadProgress((p) => {
+      const c = { ...p };
+      delete c[name];
+      return c;
+    });
+  };
+
+  const handleUploadAll = async () => {
+    if (!patientId || uploadedFiles.length === 0) return;
+    try {
+      setIsUploading(true);
+      for (const file of uploadedFiles) {
+        setUploadProgress((p) => ({ ...p, [file.name]: 0 }));
+        // Direct upload to backend with progress
+        const up = await uploadAPI.directUpload(file, patientId, (e) => {
+          const total = e.total || 0;
+          const loaded = e.loaded || 0;
+          const pct = total > 0 ? Math.floor((loaded / total) * 100) : 0;
+          setUploadProgress((p) => ({ ...p, [file.name]: pct }));
+        });
+        const uploadDoc = up.data;
+        const uploadRecordId = uploadDoc?._id;
+        // Trigger analysis
+        if (uploadRecordId) {
+          try {
+            setIsAnalyzing(true);
+            await uploadAPI.analyzeDocument(uploadRecordId, patientId);
+          } finally {
+            setIsAnalyzing(false);
+          }
+        }
+      }
+      // Refresh after all done
+      await loadPatientFiles();
+      await loadAIAnalyses();
+      setUploadedFiles([]);
+      setUploadProgress({});
+    } catch (error) {
+      alert(
+        `Upload failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   if (isLoading) {
@@ -786,16 +928,16 @@ const PatientDetails: React.FC = () => {
                   </div>
                 </button>
                 <button
-                  onClick={() => setActiveTab("diagnosis")}
+                  onClick={() => setActiveTab("analysis")}
                   className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === "diagnosis"
+                    activeTab === "analysis"
                       ? "border-primary-500 text-primary-600"
                       : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                   }`}
                 >
                   <div className="flex items-center space-x-2">
                     <Brain className="w-4 h-4" />
-                    <span>AI Diagnosis</span>
+                    <span>AI Analysis</span>
                   </div>
                 </button>
               </div>
@@ -810,10 +952,6 @@ const PatientDetails: React.FC = () => {
                       Medical Timeline
                     </h3>
                     <div className="flex items-center space-x-3">
-                      <button className="btn-primary flex items-center space-x-2">
-                        <Plus className="w-4 h-4" />
-                        <span>Add Visit</span>
-                      </button>
                       <button
                         onClick={handleCloseCase}
                         disabled={isClosingCase || !patient.isActive}
@@ -851,14 +989,16 @@ const PatientDetails: React.FC = () => {
                       </div>
                     ) : (
                       <div className="space-y-6">
-                        {/* Case Closed Entry - Show only if patient is inactive */}
-                        {!patient.isActive && (
-                          <div className="relative">
+                        {/* Dynamic Timeline Entries */}
+                        {timelineData.map((entry, index) => (
+                          <div key={index} className="relative">
                             <div className="flex items-start">
                               {/* Timeline Node */}
                               <div className="relative z-10 flex-shrink-0">
-                                <div className="w-12 h-12 bg-red-500 rounded-full border-4 border-white shadow-lg flex items-center justify-center">
-                                  <X className="w-5 h-5 text-white" />
+                                <div
+                                  className={`w-12 h-12 rounded-full border-4 border-white shadow-lg flex items-center justify-center bg-purple-500`}
+                                >
+                                  <UserIcon className="w-5 h-5 text-white" />
                                 </div>
                               </div>
 
@@ -869,33 +1009,41 @@ const PatientDetails: React.FC = () => {
                                   <div className="flex items-center justify-between">
                                     <div className="flex-1">
                                       <h4 className="text-xl font-semibold text-gray-900">
-                                        Case Closed
+                                        Visit
                                       </h4>
                                       <p className="text-sm text-gray-600 mt-1">
-                                        Patient case has been closed and marked
-                                        as inactive.
+                                        {entry.summary ||
+                                          entry.initialDiagnosis ||
+                                          "Visit details not specified"}
                                       </p>
                                     </div>
                                     <div className="flex items-center space-x-3 ml-4">
                                       <div className="text-right">
                                         <div className="text-sm font-medium text-gray-900">
-                                          {formatDate(new Date().toISOString())}
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                          Case Closed
+                                          {formatDate(entry.visitDate)}
                                         </div>
                                       </div>
                                       <button
                                         onClick={() =>
+                                          handleUpdateVisitClick(index)
+                                        }
+                                        className="px-2 py-1 text-xs font-medium rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                                      >
+                                        Update
+                                      </button>
+                                      <button
+                                        onClick={() =>
                                           setExpandedTimeline(
-                                            expandedTimeline === "case-closed"
+                                            expandedTimeline ===
+                                              `entry-${index}`
                                               ? null
-                                              : "case-closed"
+                                              : `entry-${index}`
                                           )
                                         }
                                         className="p-1 text-gray-400 hover:text-gray-600 rounded"
                                       >
-                                        {expandedTimeline === "case-closed" ? (
+                                        {expandedTimeline ===
+                                        `entry-${index}` ? (
                                           <ChevronUp className="w-4 h-4" />
                                         ) : (
                                           <ChevronDown className="w-4 h-4" />
@@ -906,33 +1054,58 @@ const PatientDetails: React.FC = () => {
                                 </div>
 
                                 {/* Expanded Details */}
-                                {expandedTimeline === "case-closed" && (
+                                {expandedTimeline === `entry-${index}` && (
                                   <div className="border-t border-gray-100 p-4 bg-gray-50">
                                     <div className="space-y-4">
-                                      <div className="flex items-center space-x-2">
-                                        <UserIcon className="w-4 h-4 text-gray-500" />
-                                        <span className="text-sm font-medium text-gray-700">
-                                          Closed by: {user?.firstName}{" "}
-                                          {user?.lastName}
-                                        </span>
-                                      </div>
-                                      <p className="text-sm text-gray-600">
-                                        Patient case has been officially closed.
-                                        The patient is no longer active in the
-                                        system. All medical records and
-                                        documents remain accessible for
-                                        reference purposes.
-                                      </p>
+                                      {entry.initialDiagnosis && (
+                                        <div>
+                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                            Initial Diagnosis:
+                                          </h5>
+                                          <p className="text-sm text-gray-600">
+                                            {entry.initialDiagnosis}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {entry.updates && (
+                                        <div>
+                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                            Updates/Changes:
+                                          </h5>
+                                          <p className="text-sm text-gray-600">
+                                            {entry.updates}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {entry.summary && (
+                                        <div>
+                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                            Summary of Diagnostics & Treatment:
+                                          </h5>
+                                          <p className="text-sm text-gray-600">
+                                            {entry.summary}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {entry.medicationsGiven &&
+                                        entry.medicationsGiven.length > 0 && (
+                                          <div>
+                                            <h5 className="text-sm font-medium text-gray-700 mb-1">
+                                              Medications Given:
+                                            </h5>
+                                            <p className="text-sm text-gray-600">
+                                              {entry.medicationsGiven.join(
+                                                ", "
+                                              )}
+                                            </p>
+                                          </div>
+                                        )}
                                       <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
                                         <span className="flex items-center space-x-1">
                                           <Clock className="w-3 h-3" />
-                                          <span>Case Status: Inactive</span>
-                                        </span>
-                                        <span className="flex items-center space-x-1">
-                                          <UserIcon className="w-3 h-3" />
                                           <span>
-                                            Patient: {patient.firstName}{" "}
-                                            {patient.lastName}
+                                            Created:{" "}
+                                            {formatDate(entry.visitDate)}
                                           </span>
                                         </span>
                                       </div>
@@ -942,9 +1115,9 @@ const PatientDetails: React.FC = () => {
                               </div>
                             </div>
                           </div>
-                        )}
+                        ))}
 
-                        {/* Patient Registration Entry */}
+                        {/* Patient Registration Entry - at the bottom */}
                         <div className="relative">
                           <div className="flex items-start">
                             {/* Timeline Node */}
@@ -1043,172 +1216,6 @@ const PatientDetails: React.FC = () => {
                             </div>
                           </div>
                         </div>
-
-                        {/* Dynamic Timeline Entries */}
-                        {timelineData.map((entry, index) => (
-                          <div key={index} className="relative">
-                            <div className="flex items-start">
-                              {/* Timeline Node */}
-                              <div className="relative z-10 flex-shrink-0">
-                                <div
-                                  className={`w-12 h-12 rounded-full border-4 border-white shadow-lg flex items-center justify-center ${
-                                    entry.visitType === "initial"
-                                      ? "bg-blue-500"
-                                      : entry.visitType === "follow-up"
-                                      ? "bg-green-500"
-                                      : entry.visitType === "emergency"
-                                      ? "bg-red-500"
-                                      : entry.visitType === "consultation"
-                                      ? "bg-purple-500"
-                                      : entry.visitType === "procedure"
-                                      ? "bg-orange-500"
-                                      : "bg-gray-500"
-                                  }`}
-                                >
-                                  <UserIcon className="w-5 h-5 text-white" />
-                                </div>
-                              </div>
-
-                              {/* Content Card */}
-                              <div className="ml-6 flex-1 bg-white rounded-lg border border-gray-200 shadow-sm">
-                                {/* Collapsed View */}
-                                <div className="p-4">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                      <h4 className="text-xl font-semibold text-gray-900">
-                                        {entry.visitType
-                                          .charAt(0)
-                                          .toUpperCase() +
-                                          entry.visitType
-                                            .slice(1)
-                                            .replace("-", " ")}{" "}
-                                        Visit
-                                      </h4>
-                                      <p className="text-sm text-gray-600 mt-1">
-                                        {entry.diagnosis ||
-                                          entry.notes ||
-                                          "Visit details not specified"}
-                                      </p>
-                                    </div>
-                                    <div className="flex items-center space-x-3 ml-4">
-                                      <div className="text-right">
-                                        <div className="text-sm font-medium text-gray-900">
-                                          {formatDate(entry.visitDate)}
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                          {entry.doctor?.firstName}{" "}
-                                          {entry.doctor?.lastName}
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() =>
-                                          setExpandedTimeline(
-                                            expandedTimeline ===
-                                              `entry-${index}`
-                                              ? null
-                                              : `entry-${index}`
-                                          )
-                                        }
-                                        className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                                      >
-                                        {expandedTimeline ===
-                                        `entry-${index}` ? (
-                                          <ChevronUp className="w-4 h-4" />
-                                        ) : (
-                                          <ChevronDown className="w-4 h-4" />
-                                        )}
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Expanded Details */}
-                                {expandedTimeline === `entry-${index}` && (
-                                  <div className="border-t border-gray-100 p-4 bg-gray-50">
-                                    <div className="space-y-4">
-                                      {entry.doctor && (
-                                        <div className="flex items-center space-x-2">
-                                          <UserIcon className="w-4 h-4 text-gray-500" />
-                                          <span className="text-sm font-medium text-gray-700">
-                                            Doctor: {entry.doctor.firstName}{" "}
-                                            {entry.doctor.lastName}
-                                          </span>
-                                        </div>
-                                      )}
-                                      {entry.diagnosis && (
-                                        <div>
-                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
-                                            Diagnosis:
-                                          </h5>
-                                          <p className="text-sm text-gray-600">
-                                            {entry.diagnosis}
-                                          </p>
-                                        </div>
-                                      )}
-                                      {entry.symptoms &&
-                                        entry.symptoms.length > 0 && (
-                                          <div>
-                                            <h5 className="text-sm font-medium text-gray-700 mb-1">
-                                              Symptoms:
-                                            </h5>
-                                            <p className="text-sm text-gray-600">
-                                              {entry.symptoms.join(", ")}
-                                            </p>
-                                          </div>
-                                        )}
-                                      {entry.treatment && (
-                                        <div>
-                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
-                                            Treatment:
-                                          </h5>
-                                          <p className="text-sm text-gray-600">
-                                            {entry.treatment}
-                                          </p>
-                                        </div>
-                                      )}
-                                      {entry.medications &&
-                                        entry.medications.length > 0 && (
-                                          <div>
-                                            <h5 className="text-sm font-medium text-gray-700 mb-1">
-                                              Medications:
-                                            </h5>
-                                            <p className="text-sm text-gray-600">
-                                              {entry.medications.join(", ")}
-                                            </p>
-                                          </div>
-                                        )}
-                                      {entry.notes && (
-                                        <div>
-                                          <h5 className="text-sm font-medium text-gray-700 mb-1">
-                                            Notes:
-                                          </h5>
-                                          <p className="text-sm text-gray-600">
-                                            {entry.notes}
-                                          </p>
-                                        </div>
-                                      )}
-                                      <div className="flex items-center space-x-4 text-xs text-gray-500 pt-2 border-t border-gray-200">
-                                        <span className="flex items-center space-x-1">
-                                          <Clock className="w-3 h-3" />
-                                          <span>
-                                            Visit Type: {entry.visitType}
-                                          </span>
-                                        </span>
-                                        <span className="flex items-center space-x-1">
-                                          <UserIcon className="w-3 h-3" />
-                                          <span>
-                                            Created:{" "}
-                                            {formatDate(entry.createdAt)}
-                                          </span>
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
                       </div>
                     )}
                   </div>
@@ -1453,17 +1460,35 @@ const PatientDetails: React.FC = () => {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
 
-                  {/* File Upload Section */}
+              {activeTab === "analysis" && (
+                <div className="space-y-6">
+                  {/* File selection list and controls */}
                   <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="text-xl font-medium text-gray-900">
                         Upload New Files for Analysis
                       </h4>
-                      <label className="btn-secondary flex items-center space-x-2 cursor-pointer">
-                        <Upload className="w-4 h-4" />
-                        <span>Upload Document</span>
-                      </label>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => analysisFileInputRef.current?.click()}
+                          className="btn-secondary flex items-center space-x-2"
+                        >
+                          <Upload className="w-4 h-4" />
+                          <span>Select Files</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleUploadAll}
+                          disabled={uploadedFiles.length === 0 || isUploading}
+                          className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isUploading ? "Uploading..." : "Upload All"}
+                        </button>
+                      </div>
                     </div>
                     <input
                       type="file"
@@ -1471,9 +1496,55 @@ const PatientDetails: React.FC = () => {
                       accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tiff,.dcm"
                       onChange={handleFileUpload}
                       className="hidden"
-                      id="file-upload"
+                      ref={analysisFileInputRef}
                     />
-                    <div className="text-sm text-gray-500">
+                    {uploadedFiles.length > 0 ? (
+                      <div className="space-y-3">
+                        {uploadedFiles.map((file) => (
+                          <div
+                            key={file.name}
+                            className="flex items-center justify-between border rounded-md p-3"
+                          >
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {file.name}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {file.type || "unknown"} •{" "}
+                                {formatFileSize(file.size)}
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              {typeof uploadProgress[file.name] ===
+                                "number" && (
+                                <div className="w-40 bg-gray-100 rounded-full h-2">
+                                  <div
+                                    className="bg-primary-500 h-2 rounded-full"
+                                    style={{
+                                      width: `${uploadProgress[file.name]}%`,
+                                    }}
+                                  />
+                                </div>
+                              )}
+                              <button
+                                onClick={() =>
+                                  handleRemoveSelectedFile(file.name)
+                                }
+                                disabled={isUploading}
+                                className="text-red-600 text-sm hover:underline disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">
+                        No files selected.
+                      </div>
+                    )}
+                    <div className="text-sm text-gray-500 mt-3">
                       Supported formats: PDF, DOC, DOCX, JPG, JPEG, PNG, TIFF,
                       DCM
                     </div>
@@ -1594,65 +1665,91 @@ const PatientDetails: React.FC = () => {
                   </div>
                 </div>
               )}
-
-              {activeTab === "diagnosis" && (
-                <div className="space-y-6">
-                  <div className="bg-white rounded-lg border border-gray-200 p-6">
-                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                      Patient Diagnosis
-                    </h3>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Primary Diagnosis
-                        </label>
-                        <input
-                          type="text"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                          placeholder="Enter primary diagnosis"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Secondary Diagnosis
-                        </label>
-                        <input
-                          type="text"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                          placeholder="Enter secondary diagnosis"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Treatment Plan
-                        </label>
-                        <textarea
-                          rows={4}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                          placeholder="Enter treatment plan"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Notes
-                        </label>
-                        <textarea
-                          rows={3}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                          placeholder="Enter additional notes"
-                        />
-                      </div>
-                      <div className="flex justify-end">
-                        <button className="btn-primary">Save Diagnosis</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
       </div>
+      {showVisitModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Update Visit
+              </h3>
+              <button
+                onClick={() => setShowVisitModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Initial Diagnosis
+                </label>
+                <textarea
+                  name="initialDiagnosis"
+                  value={visitForm.initialDiagnosis}
+                  onChange={handleVisitFormChange}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Enter initial diagnosis"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Updates/Changes
+                </label>
+                <textarea
+                  name="updates"
+                  value={visitForm.updates}
+                  onChange={handleVisitFormChange}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Enter updates or changes"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Summary / Final Diagnosis
+                </label>
+                <textarea
+                  name="summary"
+                  value={visitForm.summary}
+                  onChange={handleVisitFormChange}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Summarize diagnostics done and medication given"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Medications Given (comma-separated)
+                </label>
+                <input
+                  name="medicationsGiven"
+                  value={visitForm.medicationsGiven}
+                  onChange={handleVisitFormChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="e.g., Paracetamol 500mg, Amoxicillin 250mg"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+              <button
+                onClick={() => setShowVisitModal(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button onClick={handleSaveVisit} className="btn-primary">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

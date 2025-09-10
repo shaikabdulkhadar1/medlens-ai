@@ -121,6 +121,7 @@ app.post("/api/test-user", async (req, res) => {
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/upload", require("./routes/upload"));
 app.use("/api/timeline", require("./routes/timeline"));
+app.use("/api/visits", require("./routes/visits"));
 app.use(
   "/api/front-desk-coordinator",
   require("./routes/frontDeskCoordinator")

@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosProgressEvent } from "axios";
 import {
   LoginRequest,
   LoginResponse,
@@ -148,23 +148,26 @@ export const uploadAPI = {
   uploadToPresignedUrl: async (
     presignedUrl: string,
     file: File,
-    metadata?: { [key: string]: string }
-  ): Promise<void> => {
-    const headers: { [key: string]: string } = {
-      "Content-Type": file.type,
-    };
-
-    // Add metadata headers if provided
-    if (metadata) {
-      Object.entries(metadata).forEach(([key, value]) => {
-        headers[`x-amz-meta-${key}`] = value;
-      });
+    metadata?: {
+      patientId?: string;
+      uploadedBy?: string;
+      originalName?: string;
     }
+  ): Promise<void> => {
+    const headers: { [key: string]: string } = {};
+    if (metadata?.originalName)
+      headers["x-amz-meta-originalname"] = metadata.originalName;
+    if (metadata?.patientId)
+      headers["x-amz-meta-patientid"] = metadata.patientId;
+    if (metadata?.uploadedBy)
+      headers["x-amz-meta-uploadedby"] = metadata.uploadedBy;
 
     const response = await fetch(presignedUrl, {
       method: "PUT",
       body: file,
       headers,
+      mode: "cors",
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -232,6 +235,21 @@ export const uploadAPI = {
     return response.data;
   },
 
+  directUpload: async (
+    file: File,
+    patientId: string,
+    onUploadProgress?: (progressEvent: AxiosProgressEvent) => void
+  ): Promise<ApiResponse> => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("patientId", patientId);
+    const response = await api.post<ApiResponse>("/upload/direct", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress,
+    });
+    return response.data as ApiResponse;
+  },
+
   getAnalysis: async (analysisId: string): Promise<ApiResponse> => {
     const response = await api.get<ApiResponse>(
       `/upload/analysis/${analysisId}`
@@ -285,6 +303,47 @@ export const timelineAPI = {
   ): Promise<ApiResponse> => {
     const response = await api.delete<ApiResponse>(
       `/timeline/${patientId}/${entryIndex}`
+    );
+    return response.data;
+  },
+};
+
+// Visits API
+export const visitsAPI = {
+  getPatientVisits: async (patientId: string): Promise<ApiResponse> => {
+    const response = await api.get<ApiResponse>(`/visits/patient/${patientId}`);
+    return response.data;
+  },
+  addVisit: async (
+    patientId: string,
+    visit: {
+      visitDate: string | Date;
+      initialDiagnosis?: string;
+      updates?: string;
+      summary?: string;
+      medicationsGiven?: string[];
+    }
+  ): Promise<ApiResponse> => {
+    const response = await api.post<ApiResponse>(
+      `/visits/patient/${patientId}`,
+      visit
+    );
+    return response.data;
+  },
+  updateVisit: async (
+    patientId: string,
+    visitIndex: number,
+    visit: Partial<{
+      visitDate: string | Date;
+      initialDiagnosis: string;
+      updates: string;
+      summary: string;
+      medicationsGiven: string[];
+    }>
+  ): Promise<ApiResponse> => {
+    const response = await api.put<ApiResponse>(
+      `/visits/${patientId}/${visitIndex}`,
+      visit
     );
     return response.data;
   },

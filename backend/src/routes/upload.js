@@ -6,7 +6,7 @@ const path = require("path");
 const fs = require("fs");
 const { authenticateToken, requireAnyDoctor } = require("../middleware/auth");
 const { UploadRecord, Patient, AIAnalysis, User } = require("../db");
-const AIService = require("../ai-services/aiService");
+const AIService = require("../services/aiService");
 const PDFService = require("../services/pdfService");
 const mongoose = require("mongoose");
 
@@ -99,11 +99,11 @@ const uploadToR2 = async (file, patientId, userId) => {
       Body: fileContent,
       ContentType: contentType,
       Metadata: {
-        originalName: file.originalname,
-        uploadedBy: userId,
-        patientId: patientId,
+        originalName: String(file.originalname),
+        uploadedBy: String(userId),
+        patientId: String(patientId),
         uploadedAt: new Date().toISOString(),
-        fileSize: file.size.toString(),
+        fileSize: String(file.size),
       },
     };
 
@@ -948,6 +948,110 @@ router.get(
   }
 );
 
+// Direct upload (proxy through backend)
+router.post(
+  "/direct",
+  authenticateToken,
+  requireAnyDoctor,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const userId = req.user._id;
+      const { patientId } = req.body;
+      const file = req.file;
+
+      if (!file) {
+        return res
+          .status(400)
+          .json({ success: false, message: "File is required" });
+      }
+      if (!patientId) {
+        // Clean up temp file
+        if (file?.path)
+          try {
+            fs.unlinkSync(file.path);
+          } catch {}
+        return res
+          .status(400)
+          .json({ success: false, message: "Patient ID is required" });
+      }
+
+      // Validate patient exists
+      const patient = await Patient.findById(patientId);
+      if (!patient) {
+        if (file?.path)
+          try {
+            fs.unlinkSync(file.path);
+          } catch {}
+        return res
+          .status(404)
+          .json({ success: false, message: "Patient not found" });
+      }
+
+      // Upload to R2
+      const r2 = await uploadToR2(file, patientId, userId);
+
+      // Create UploadRecord as completed
+      const uploadRecord = new UploadRecord({
+        patientId,
+        fileKey: r2.key,
+        originalName: r2.originalName,
+        uploadedBy: userId,
+        status: "completed",
+        documentType: "uploaded-by-user",
+        fileSize: r2.size,
+        contentType: r2.contentType,
+        completedAt: new Date(),
+        metadata: {
+          patientId: String(patientId),
+          uploadedBy: String(userId),
+          originalName: r2.originalName,
+        },
+      });
+      await uploadRecord.save();
+
+      // Generate presigned GET URL and store it in metadata (note: expires)
+      const getParams = {
+        Bucket: "medlens-documents",
+        Key: r2.key,
+        Expires: 3600,
+      };
+      const presignedUrl = await s3.getSignedUrlPromise("getObject", getParams);
+      // Update metadata with presigned URL snapshot
+      uploadRecord.metadata = {
+        ...uploadRecord.metadata,
+        lastPresignedUrl: presignedUrl,
+        lastPresignedUrlExpiresAt: new Date(
+          Date.now() + 3600 * 1000
+        ).toISOString(),
+      };
+      await uploadRecord.save();
+
+      return res.status(201).json({
+        success: true,
+        message: "File uploaded successfully",
+        data: {
+          _id: uploadRecord._id,
+          fileKey: uploadRecord.fileKey,
+          originalName: uploadRecord.originalName,
+          contentType: uploadRecord.contentType,
+          fileSize: uploadRecord.fileSize,
+          presignedUrl,
+          presignedUrlExpiresAt:
+            uploadRecord.metadata.lastPresignedUrlExpiresAt,
+        },
+      });
+    } catch (error) {
+      console.error("Direct upload error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to upload file",
+        error: error.message,
+      });
+    }
+  }
+);
+
 // Helper function to start AI analysis
 async function startAIAnalysis(uploadRecord, patientId, userId) {
   let aiAnalysis = null;
@@ -987,7 +1091,7 @@ async function startAIAnalysis(uploadRecord, patientId, userId) {
 
     // Send to AI service for analysis
     console.log("🤖 Sending to AI service...");
-    const aiService = new AIService();
+    const aiService = AIService;
     const aiResult = await aiService.analyzeDocument(
       fileBuffer,
       uploadRecord.originalName,
